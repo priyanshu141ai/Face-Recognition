@@ -1,5 +1,9 @@
 # Face Recognition Backend
 
+[![Python](https://img.shields.io/badge/Python-3.11-blue)](https://www.python.org/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.115.0-009688)](https://fastapi.tiangolo.com/)
+[![License](https://img.shields.io/badge/License-MIT-green)](https://opensource.org/licenses/MIT)
+
 ## Purpose
 This repository is a Phase 1 scaffold for a face verification backend. It is designed to give app developers a stable API contract while keeping the core inference pipeline modular and easy to replace later with real models.
 
