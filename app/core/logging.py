@@ -3,9 +3,20 @@ from typing import Any
 
 
 class SensitiveDataFilter(logging.Filter):
+    BLOCKED_PATTERNS = (
+        "data:image",
+        "base64",
+        "raw image",
+        "authorization:",
+        "bearer ",
+        "embedding",
+        "aligned crop",
+        "traceback",
+    )
+
     def filter(self, record: logging.LogRecord) -> bool:
-        message = str(getattr(record, "msg", ""))
-        return "data:image" not in message and "base64" not in message.lower()
+        message = str(getattr(record, "msg", "")).lower()
+        return not any(pattern in message for pattern in self.BLOCKED_PATTERNS)
 
 
 def configure_logging() -> None:

@@ -12,7 +12,7 @@ from app.core.logging import configure_logging
 load_dotenv()
 configure_logging()
 
-app = FastAPI(title="Face Recognition Backend", version="phase-1")
+app = FastAPI(title="Face Recognition Backend", version="phase-4.1")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -36,6 +36,11 @@ async def invalid_image_handler(_, exc: InvalidImagePayloadError) -> JSONRespons
     return JSONResponse(status_code=415, content={"error_code": "invalid_image_payload", "message": exc.message})
 
 
+@app.exception_handler(FileNotFoundError)
+async def missing_model_handler(_, exc: FileNotFoundError) -> JSONResponse:
+    return JSONResponse(status_code=500, content={"error_code": "model_not_found", "message": str(exc)})
+
+
 @app.get("/")
 def root() -> dict[str, str]:
-    return {"service": "face-recognition-backend", "version": "phase-1"}
+    return {"service": "face-recognition-backend", "version": "phase-4.1"}

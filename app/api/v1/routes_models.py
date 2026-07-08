@@ -1,14 +1,64 @@
 from fastapi import APIRouter
 
+from app.core.config import get_settings
+
 router = APIRouter(prefix="/v1/models", tags=["models"])
 
 
 @router.get("/current")
-def current_models() -> dict[str, str]:
+def current_models() -> dict[str, object]:
+    settings = get_settings()
+    detector_names = {
+        "mock": "mock_yunet_adapter_v1",
+        "yunet": "yunet_2023mar_opencv",
+    }
+    detector_paths = {
+        "mock": None,
+        "yunet": settings.yunet_model_path,
+    }
+    recognizer_names = {
+        "mock": "mock_arcface_adapter_v1",
+        "arcface_onnx": "arcface_r100_onnx",
+        "mobilefacenet_onnx": "mobilefacenet_onnx",
+        "insightface_buffalo_l": "insightface_buffalo_l",
+    }
+    recognizer_paths = {
+        "mock": None,
+        "arcface_onnx": settings.arcface_model_path,
+        "mobilefacenet_onnx": settings.mobilefacenet_model_path,
+        "insightface_buffalo_l": settings.insightface_model_name,
+    }
+    recognizer_dims = {
+        "mock": 16,
+        "arcface_onnx": settings.arcface_embedding_dim,
+        "mobilefacenet_onnx": settings.mobilefacenet_embedding_dim,
+        "insightface_buffalo_l": 512,
+    }
     return {
-        "detector": "mock_yunet_adapter_v1",
-        "recognizer": "mock_arcface_adapter_v1",
-        "preprocessing": "align112_rgb_mock_v1",
-        "threshold": "0.40",
-        "calibration": "linear_mock_v1",
+        "detector": {
+            "name": detector_names.get(settings.detector_provider, settings.detector_provider),
+            "path": detector_paths.get(settings.detector_provider),
+            "score_threshold": settings.yunet_score_threshold,
+        },
+        "recognizer": {
+            "name": recognizer_names.get(settings.recognizer_provider, settings.recognizer_provider),
+            "path": recognizer_paths.get(settings.recognizer_provider),
+            "embedding_dim": recognizer_dims.get(settings.recognizer_provider),
+            "input_size": settings.arcface_input_size,
+            "providers": [provider.strip() for provider in settings.onnx_providers.split(",") if provider.strip()],
+        },
+        "preprocessing": {
+            "name": "align112_rgb_v1",
+            "input_size": 112,
+            "normalization": settings.arcface_normalization,
+        },
+        "threshold": {
+            "score_type": "cosine",
+            "value": settings.match_threshold,
+            "operating_point": "phase3_fixed_threshold",
+        },
+        "calibration": {
+            "name": "linear_mock_v1",
+            "real_probability": False,
+        },
     }

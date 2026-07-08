@@ -1,6 +1,9 @@
 import base64
 import binascii
 import io
+
+import cv2
+import numpy as np
 from PIL import Image
 
 from app.core.errors import InvalidImagePayloadError
@@ -26,3 +29,10 @@ class ImageDecoder:
         if kind == "base64_png" and (image.format or "").upper() != "PNG":
             raise InvalidImagePayloadError("png payload expected")
         return data
+
+    def decode_image_to_array(self, image_bytes: bytes) -> np.ndarray:
+        image_array = np.frombuffer(image_bytes, dtype=np.uint8)
+        decoded = cv2.imdecode(image_array, cv2.IMREAD_COLOR)
+        if decoded is None:
+            raise InvalidImagePayloadError("invalid image payload")
+        return decoded

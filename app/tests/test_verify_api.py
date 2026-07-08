@@ -1,6 +1,9 @@
 import base64
+import os
 
 from fastapi.testclient import TestClient
+
+os.environ.setdefault("DETECTOR_PROVIDER", "mock")
 
 from app.main import app
 

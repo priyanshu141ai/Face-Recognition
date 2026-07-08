@@ -6,7 +6,7 @@ This file is the main contract reference for the frontend and mobile client. Kee
 - GET /healthz
   - Response: {"status": "ok"}
 - GET /readyz
-  - Response: {"status": "ready", "models_loaded": true, "provider": "mock", "version": "phase-1"}
+  - Response: {"status": "ready", "models_loaded": true, "provider": "mock", "version": "phase-4.1"}
 
 ## Face verification
 - POST /v1/faces/verify
@@ -14,7 +14,8 @@ This file is the main contract reference for the frontend and mobile client. Kee
   - request_id: optional string
   - image_a: base64 JPEG/PNG payload
   - image_b: base64 JPEG/PNG payload
-  - face_selector: currently only "largest"
+  - face_selector: "largest", "highest_confidence", "face_index", or "all"
+  - face_index: optional integer when face_selector is "face_index"
   - return_embeddings: boolean
   - quality_policy: reject_if_no_face, reject_if_multiple_faces, min_detection_confidence
 - Response fields:
@@ -29,6 +30,16 @@ This file is the main contract reference for the frontend and mobile client. Kee
 ## Model metadata
 - GET /v1/models/current
 - Returns the current detector, recognizer, preprocessing, threshold, and calibration versions.
+
+## Face detection
+- POST /v1/faces/detect
+- Request fields:
+  - request_id: optional string
+  - image: base64 JPEG/PNG payload
+  - quality_policy: reject_if_no_face, reject_if_multiple_faces, min_detection_confidence
+- Response fields:
+  - request_id
+  - faces
 
 ## Notes for contributors
 - Keep response field names stable unless the client contract is intentionally changed.

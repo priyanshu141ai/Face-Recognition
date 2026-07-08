@@ -3,4 +3,4 @@ class ScoreCalibrator:
         self.version = version
 
     def calibrate(self, similarity: float) -> float:
-        return round(float(similarity * 100.0), 2)
+        return round(float(max(0.0, min(100.0, similarity * 100.0))), 2)
