@@ -26,7 +26,7 @@ class Settings:
     insightface_ctx_id: int = -1
     arcface_input_size: int = 112
     arcface_embedding_dim: int = 512
-    arcface_normalization: str = "minus127_5_div128"
+    arcface_normalization: str = "raw_0_255"
     arcface_use_gpu: bool = False
     onnx_providers: str = "CPUExecutionProvider"
     match_threshold: float = 0.40
@@ -62,7 +62,7 @@ class Settings:
             insightface_ctx_id=int(os.getenv("INSIGHTFACE_CTX_ID", "-1")),
             arcface_input_size=int(os.getenv("ARCFACE_INPUT_SIZE", "112")),
             arcface_embedding_dim=int(os.getenv("ARCFACE_EMBEDDING_DIM", "512")),
-            arcface_normalization=os.getenv("ARCFACE_NORMALIZATION", "minus127_5_div128"),
+            arcface_normalization=os.getenv("ARCFACE_NORMALIZATION", "raw_0_255"),
             arcface_use_gpu=os.getenv("ARCFACE_USE_GPU", "false").lower() == "true",
             onnx_providers=os.getenv("ONNX_PROVIDERS", "CPUExecutionProvider"),
             match_threshold=float(os.getenv("MATCH_THRESHOLD", "0.40")),

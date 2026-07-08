@@ -45,6 +45,17 @@ def test_arcface_real_recognizer_embedding_contract(monkeypatch) -> None:
     assert np.linalg.norm(embedding) == pytest.approx(1.0, abs=1e-4)
 
 
+def test_arcface_real_preprocessing_not_constant(monkeypatch) -> None:
+    _require_real()
+    monkeypatch.setenv("RECOGNIZER_PROVIDER", "arcface_onnx")
+    monkeypatch.setenv("ARCFACE_MODEL_PATH", str(ARCFACE))
+    monkeypatch.setenv("ARCFACE_NORMALIZATION", "raw_0_255")
+    recognizer = ArcFaceOnnxRecognizer()
+    blank = recognizer.embed(np.zeros((112, 112, 3), dtype=np.uint8))
+    random = recognizer.embed(np.random.default_rng(1).integers(0, 256, (112, 112, 3), dtype=np.uint8))
+    assert float(np.dot(blank, random)) < 0.9
+
+
 def test_real_api_blank_image_fails_cleanly(monkeypatch) -> None:
     _require_real()
     monkeypatch.setenv("DETECTOR_PROVIDER", "yunet")

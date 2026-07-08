@@ -42,14 +42,10 @@ class ArcFaceOnnxRecognizer(BaseFaceRecognizer):
         if image.ndim != 3 or image.shape[0:2] != (self.settings.arcface_input_size, self.settings.arcface_input_size):
             raise InvalidEmbeddingShapeError("invalid input shape for ArcFace embedding")
 
-        image_rgb = image[:, :, ::-1]
-        image_rgb = image_rgb.astype(np.float32)
-        image_rgb = (image_rgb - 127.5) / 128.0
-        image_rgb = np.transpose(image_rgb, (2, 0, 1))
-        image_rgb = np.expand_dims(image_rgb, axis=0)
+        model_input = self._preprocess(image)
 
         try:
-            outputs = self.session.run([self.output_name], {self.input_name: image_rgb})[0]
+            outputs = self.session.run([self.output_name], {self.input_name: model_input})[0]
         except Exception as exc:
             raise ArcFaceInferenceError("arcface inference failed") from exc
 
@@ -62,6 +58,19 @@ class ArcFaceOnnxRecognizer(BaseFaceRecognizer):
             return embedding
         return embedding / norm
 
+    def _preprocess(self, image_bgr: np.ndarray) -> np.ndarray:
+        normalization = self.settings.arcface_normalization
+        if normalization == "raw_0_255":
+            image = image_bgr.astype(np.float32)
+        elif normalization == "raw_rgb_0_255":
+            image = image_bgr[:, :, ::-1].astype(np.float32)
+        elif normalization == "minus127_5_div128":
+            image = image_bgr[:, :, ::-1].astype(np.float32)
+            image = (image - 127.5) / 128.0
+        else:
+            raise ArcFaceInferenceError(f"unsupported ArcFace normalization: {normalization}")
+        return np.expand_dims(np.transpose(image, (2, 0, 1)), axis=0)
+
     @property
     def metadata(self) -> dict[str, Any]:
         return {
@@ -71,4 +80,5 @@ class ArcFaceOnnxRecognizer(BaseFaceRecognizer):
             "output_name": self.output_name,
             "providers": [provider.strip() for provider in self.settings.onnx_providers.split(",") if provider.strip()],
             "embedding_dim": self.settings.arcface_embedding_dim,
+            "normalization": self.settings.arcface_normalization,
         }
