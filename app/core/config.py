@@ -16,7 +16,7 @@ class Settings:
     yunet_nms_threshold: float = 0.3
     yunet_top_k: int = 5000
     min_face_size: int = 20
-    max_image_dimension: int = 1920
+    max_image_dimension: int = 640
     arcface_model_path: str = "models/face-recognition-resnet100-arcface.onnx"
     mobilefacenet_model_path: str = "models/mobilefacenet.onnx"
     mobilefacenet_input_size: int = 112
@@ -52,7 +52,7 @@ class Settings:
             yunet_nms_threshold=float(os.getenv("YUNET_NMS_THRESHOLD", "0.3")),
             yunet_top_k=int(os.getenv("YUNET_TOP_K", "5000")),
             min_face_size=int(os.getenv("MIN_FACE_SIZE", "20")),
-            max_image_dimension=int(os.getenv("MAX_IMAGE_DIMENSION", "1920")),
+            max_image_dimension=int(os.getenv("MAX_IMAGE_DIMENSION", "640")),
             arcface_model_path=os.getenv("ARCFACE_MODEL_PATH", "models/face-recognition-resnet100-arcface.onnx"),
             mobilefacenet_model_path=os.getenv("MOBILEFACENET_MODEL_PATH", "models/mobilefacenet.onnx"),
             mobilefacenet_input_size=int(os.getenv("MOBILEFACENET_INPUT_SIZE", "112")),

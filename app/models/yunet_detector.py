@@ -25,6 +25,9 @@ class YuNetFaceDetector(BaseFaceDetector):
             model_path,
             "",
             (320, 320),
+            self.settings.yunet_score_threshold,
+            self.settings.yunet_nms_threshold,
+            self.settings.yunet_top_k,
         )
 
     def detect(self, image: bytes, quality_policy: Any | None = None) -> list[FaceDetectionSchema]:
