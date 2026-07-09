@@ -1,12 +1,13 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 
 from app.core.config import get_settings
+from app.core.security import require_bearer_token
 
 router = APIRouter(prefix="/v1/models", tags=["models"])
 
 
 @router.get("/current")
-def current_models() -> dict[str, object]:
+def current_models(_: None = Depends(require_bearer_token)) -> dict[str, object]:
     settings = get_settings()
     detector_names = {
         "mock": "mock_yunet_adapter_v1",

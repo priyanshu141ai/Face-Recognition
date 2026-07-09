@@ -47,8 +47,8 @@ def test_alignment_returns_112x112x3_crop_using_fake_landmarks() -> None:
     assert aligned.shape == (112, 112, 3)
 
 
-def test_arcface_recognizer_raises_clean_error_if_model_file_missing(monkeypatch) -> None:
-    monkeypatch.setattr("app.models.arcface_onnx_recognizer.os.path.exists", lambda path: False)
+def test_arcface_recognizer_raises_clean_error_if_model_file_missing(monkeypatch, tmp_path) -> None:
+    monkeypatch.setenv("ARCFACE_MODEL_PATH", str(tmp_path / "missing.onnx"))
     with pytest.raises(Exception, match="ArcFace ONNX model not found"):
         ArcFaceOnnxRecognizer()
 

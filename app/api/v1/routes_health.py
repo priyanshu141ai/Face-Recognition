@@ -1,7 +1,6 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter
 
 from app.core.config import get_settings
-from app.core.security import require_bearer_token
 from app.schemas.model import ReadyResponse
 
 router = APIRouter(prefix="", tags=["health"])

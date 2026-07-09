@@ -1,6 +1,7 @@
 import argparse
 import base64
 import io
+import os
 import sys
 
 import httpx
@@ -32,7 +33,8 @@ def main() -> None:
     parser.add_argument("--token")
     args = parser.parse_args()
 
-    headers = {"Authorization": f"Bearer {args.token}"} if args.token else {}
+    token = args.token or os.getenv("API_BEARER_TOKEN")
+    headers = {"Authorization": f"Bearer {token}"} if token else {}
     base = args.base_url.rstrip("/")
     cases = [
         ("valid_png_verify", f"{base}/v1/faces/verify", {"request_id": "edge-png", "image_a": _img("RGB", "PNG"), "image_b": _img("RGB", "PNG")}, {200, 422}),

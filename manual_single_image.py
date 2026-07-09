@@ -1,28 +1,9 @@
-import base64
-import json
-import requests
+import runpy
+import sys
 from pathlib import Path
 
-BASE_URL = "http://127.0.0.1:8000"
-
-IMAGE_PATH = "test_images/priyanshu.png"
-
-def image_to_base64(path):
-    image_bytes = Path(path).read_bytes()
-    return base64.b64encode(image_bytes).decode("utf-8")
-
-payload = {
-    "image": {
-        "kind": "base64_png",
-        "data": image_to_base64(IMAGE_PATH)
-    },
-    "min_face_score": 0.85
-}
-
-response = requests.post(
-    f"{BASE_URL}/v1/faces/detect",
-    json=payload
-)
-
-print("Status Code:", response.status_code)
-print(json.dumps(response.json(), indent=2))
+scripts_dir = Path(__file__).with_name("scripts")
+sys.path.insert(0, str(scripts_dir))
+if len(sys.argv) == 1:
+    sys.argv.append("test_images/priyanshu.png")
+runpy.run_path(str(scripts_dir / "manual_test_single_image.py"), run_name="__main__")

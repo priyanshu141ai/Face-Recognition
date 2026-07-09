@@ -129,7 +129,7 @@ YUNET_SCORE_THRESHOLD=0.85
 YUNET_NMS_THRESHOLD=0.3
 YUNET_TOP_K=5000
 MIN_FACE_SIZE=20
-MAX_IMAGE_DIMENSION=1920
+MAX_IMAGE_DIMENSION=640
 ONNX_PROVIDERS=CPUExecutionProvider
 MATCH_THRESHOLD=0.40
 ```
@@ -138,6 +138,37 @@ MATCH_THRESHOLD=0.40
 ```bash
 pytest -q
 ```
+
+## API Authentication
+
+Protected endpoints use `API_BEARER_TOKEN`.
+
+Local dev can leave it empty. For app/backend integration, set it:
+
+```powershell
+$env:API_BEARER_TOKEN="my-secret-token"
+python -m uvicorn app.main:app --reload
+```
+
+Test without token:
+
+```bash
+curl http://127.0.0.1:8000/v1/models/current
+```
+
+Test with token:
+
+```bash
+curl -H "Authorization: Bearer my-secret-token" http://127.0.0.1:8000/v1/models/current
+```
+
+Run auth checks:
+
+```bash
+python scripts/test_authentication.py --base-url http://127.0.0.1:8000 --token my-secret-token
+```
+
+See [docs/authentication.md](docs/authentication.md).
 
 ## How to check everything is working
 ```bash

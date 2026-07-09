@@ -1,6 +1,7 @@
 import argparse
 import base64
 import io
+import os
 import statistics
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -33,7 +34,8 @@ def main() -> None:
     parser.add_argument("--warn-p95-ms", type=float, default=2500.0)
     args = parser.parse_args()
 
-    headers = {"Authorization": f"Bearer {args.token}"} if args.token else {}
+    token = args.token or os.getenv("API_BEARER_TOKEN")
+    headers = {"Authorization": f"Bearer {token}"} if token else {}
     with ThreadPoolExecutor(max_workers=args.concurrency) as pool:
         results = list(pool.map(lambda _: _one(args.base_url, headers), range(args.requests)))
 
