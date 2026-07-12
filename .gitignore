@@ -24,5 +24,6 @@ qa_report.md
 private_docs/
 *.private.md
 interview_notes/
+data/
 !models/.gitkeep
 !benchmark_reports/.gitkeep

@@ -5,6 +5,9 @@ from dataclasses import dataclass
 @dataclass(frozen=True)
 class Settings:
     api_bearer_token: str | None = None
+    ess_database_path: str = "data/ess.sqlite3"
+    biometric_encryption_key: str | None = None
+    device_reset_token: str | None = None
     max_image_mb: float = 5.0
     log_level: str = "INFO"
     provider: str = "mock"
@@ -41,6 +44,9 @@ class Settings:
     def from_env(cls) -> "Settings":
         return cls(
             api_bearer_token=os.getenv("API_BEARER_TOKEN") or None,
+            ess_database_path=os.getenv("ESS_DATABASE_PATH", "data/ess.sqlite3"),
+            biometric_encryption_key=os.getenv("BIOMETRIC_ENCRYPTION_KEY") or None,
+            device_reset_token=os.getenv("DEVICE_RESET_TOKEN") or None,
             max_image_mb=float(os.getenv("MAX_IMAGE_MB", "5.0")),
             log_level=os.getenv("LOG_LEVEL", "INFO"),
             provider=os.getenv("MODEL_PROVIDER", "mock"),

@@ -39,6 +39,33 @@ Public:
 ```text
 GET /healthz
 GET /readyz
+POST /api/public/clients/validate
+```
+
+ESS integration endpoints:
+
+```text
+POST /api/clients
+GET  /api/clients
+POST /api/ess/device/register
+POST /api/ess/device/verify
+GET  /api/ess/device/status
+POST /api/ess/device/reset
+POST /api/ess/face/register
+GET  /api/ess/face/status
+POST /api/ess/face/verify
+```
+
+All ESS endpoints require `Authorization`. User-scoped endpoints additionally
+require `X-User-ID`, populated only by the trusted login/API gateway. Device reset
+also requires `X-Device-Reset-Token` from an admin/OTP recovery flow.
+
+Required server configuration:
+
+```text
+ESS_DATABASE_PATH=data/ess.sqlite3
+BIOMETRIC_ENCRYPTION_KEY=<Fernet key>
+DEVICE_RESET_TOKEN=<admin recovery secret>
 ```
 
 ## 4. Request Body Format
