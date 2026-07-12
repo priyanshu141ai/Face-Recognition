@@ -1,0 +1,147 @@
+{
+  "schema_version": 1,
+  "calibration_version": "identity_5fold_platt_v1",
+  "created_at": "2026-07-12T05:15:02.260267+00:00",
+  "model_provider": "mobilefacenet_onnx",
+  "model_sha256": "9cc6e4a75f0e2bf0b1aed94578f144d15175f357bdc05e815e5c4a02b319eb4f",
+  "dataset_sha256": "bc4818999eb6bcab0547ed01c9063f1f949d846829845c47a83530729cf70f8f",
+  "split_seed": 2025,
+  "folds": 5,
+  "target_fmr": 0.001,
+  "threshold": 0.22667200000000004,
+  "operating_point": "identity_5fold_fmr_1e-03",
+  "score_calibration": {
+    "method": "balanced_platt_logistic",
+    "coefficient": 17.78416393870466,
+    "intercept": -3.7450429142694692,
+    "real_probability": false
+  },
+  "cross_validation": {
+    "aggregate": {
+      "genuine_pairs": 200,
+      "impostor_pairs": 15600,
+      "fmr": 0.000641025641025641,
+      "fnmr": 0.04,
+      "auc": 0.9824727564102564,
+      "balanced_brier": 0.021236134292186654
+    },
+    "folds": [
+      {
+        "genuine_pairs": 40,
+        "impostor_pairs": 3120,
+        "false_matches": 1,
+        "false_non_matches": 2,
+        "fmr": 0.0003205128205128205,
+        "fnmr": 0.05,
+        "fmr_95ci": [
+          8.114649122303463e-06,
+          0.0017844753599115493
+        ],
+        "fnmr_95ci": [
+          0.006113646599350838,
+          0.16919686395941758
+        ],
+        "fold": 0,
+        "threshold": 0.23117600000000002,
+        "auc": 0.9802083333333333
+      },
+      {
+        "genuine_pairs": 40,
+        "impostor_pairs": 3120,
+        "false_matches": 3,
+        "false_non_matches": 2,
+        "fmr": 0.0009615384615384616,
+        "fnmr": 0.05,
+        "fmr_95ci": [
+          0.00019833625930908217,
+          0.002807427324522395
+        ],
+        "fnmr_95ci": [
+          0.006113646599350838,
+          0.16919686395941758
+        ],
+        "fold": 1,
+        "threshold": 0.22504300000000002,
+        "auc": 0.981338141025641
+      },
+      {
+        "genuine_pairs": 40,
+        "impostor_pairs": 3120,
+        "false_matches": 0,
+        "false_non_matches": 0,
+        "fmr": 0.0,
+        "fnmr": 0.0,
+        "fmr_95ci": [
+          0.0,
+          0.0011816344779059821
+        ],
+        "fnmr_95ci": [
+          0.0,
+          0.08809730287880237
+        ],
+        "fold": 2,
+        "threshold": 0.22537300000000002,
+        "auc": 1.0
+      },
+      {
+        "genuine_pairs": 40,
+        "impostor_pairs": 3120,
+        "false_matches": 4,
+        "false_non_matches": 2,
+        "fmr": 0.001282051282051282,
+        "fnmr": 0.05,
+        "fmr_95ci": [
+          0.0003494228109408621,
+          0.003279278325690868
+        ],
+        "fnmr_95ci": [
+          0.006113646599350838,
+          0.16919686395941758
+        ],
+        "fold": 3,
+        "threshold": 0.22253200000000004,
+        "auc": 0.9610016025641025
+      },
+      {
+        "genuine_pairs": 40,
+        "impostor_pairs": 3120,
+        "false_matches": 2,
+        "false_non_matches": 2,
+        "fmr": 0.000641025641025641,
+        "fnmr": 0.05,
+        "fmr_95ci": [
+          7.764060879841219e-05,
+          0.002313667000414364
+        ],
+        "fnmr_95ci": [
+          0.006113646599350838,
+          0.16919686395941758
+        ],
+        "fold": 4,
+        "threshold": 0.22797300000000004,
+        "auc": 0.988661858974359
+      }
+    ]
+  },
+  "final_fit_metrics": {
+    "genuine_pairs": 200,
+    "impostor_pairs": 79600,
+    "false_matches": 79,
+    "false_non_matches": 8,
+    "fmr": 0.0009924623115577888,
+    "fnmr": 0.04,
+    "fmr_95ci": [
+      0.0007858180616496267,
+      0.0012367529608714562
+    ],
+    "fnmr_95ci": [
+      0.017424808994480605,
+      0.07729196822601608
+    ]
+  },
+  "limitations": [
+    "LFW is a research dataset",
+    "pair trials sharing identities are correlated",
+    "calibrated score is not a real-world identity probability"
+  ]
+}

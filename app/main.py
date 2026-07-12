@@ -13,7 +13,7 @@ from app.core.logging import configure_logging
 load_dotenv()
 configure_logging()
 
-app = FastAPI(title="Face Recognition Backend", version="phase-4.1")
+app = FastAPI(title="Face Recognition Backend", version="phase-5")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -45,4 +45,4 @@ async def missing_model_handler(_, exc: FileNotFoundError) -> JSONResponse:
 
 @app.get("/")
 def root() -> dict[str, str]:
-    return {"service": "face-recognition-backend", "version": "phase-4.1"}
+    return {"service": "face-recognition-backend", "version": "phase-5"}

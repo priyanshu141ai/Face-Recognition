@@ -66,6 +66,8 @@ def test_metrics_computation_on_synthetic_scores() -> None:
     assert metrics["auc"] >= 0.0
     assert metrics["eer"] >= 0.0
     assert "fmr_at_threshold" in metrics
+    assert metrics["fmr_resolution"] == 0.5
+    assert not metrics["fmr_target_resolvable"]["1e-03"]
 
 
 def test_eer_calculation_and_fmr_threshold() -> None:
@@ -77,7 +79,7 @@ def test_eer_calculation_and_fmr_threshold() -> None:
     ]
     metrics = compute_benchmark_metrics(results, threshold=0.5)
     assert metrics["eer"] >= 0.0
-    assert metrics["fnmr_at_fmr_1e-3"] >= 0.0
+    assert metrics["fnmr_at_fmr_1e-3"] is None
 
 
 def test_metrics_ignore_incomplete_results() -> None:
@@ -100,6 +102,17 @@ def test_report_generation_creates_files(tmp_path: Path) -> None:
     assert paths["csv"].exists()
     assert paths["json"].exists()
     assert paths["markdown"].exists()
+
+
+def test_report_uses_requested_threshold_and_unique_pair_counts(tmp_path: Path) -> None:
+    common = {"image_a": "a.jpg", "image_b": "b.jpg", "label": 1, "similarity_cosine": 0.9, "total_ms": 1.0, "error_code": None, "embedding_dim": 16, "threshold": 0.7}
+    paths = generate_benchmark_report([
+        {"model_name": "m1", **common},
+        {"model_name": "m2", **common},
+    ], tmp_path, "threshold")
+    summary = json.loads(paths["json"].read_text(encoding="utf-8"))
+    assert summary["genuine_pairs"] == 1
+    assert all(model["threshold_used"] == 0.7 for model in summary["models"])
 
 
 def test_runner_with_mock_recognizer(tmp_path: Path, monkeypatch) -> None:
@@ -134,3 +147,8 @@ def test_optional_recognizer_import_failure_gives_clean_error(monkeypatch) -> No
 
     with pytest.raises(RuntimeError, match="InsightFace is not installed"):
         InsightFaceBuffaloRecognizer()
+
+
+def test_mock_detector_requires_explicit_opt_in(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="explicit"):
+        BenchmarkRunner(models=["mock"], dataset_path=tmp_path, detector_provider="mock")

@@ -7,6 +7,8 @@ from pathlib import Path
 from itertools import combinations
 from typing import Any
 
+from PIL import Image, UnidentifiedImageError
+
 try:
     import onnxruntime as ort
 except ImportError:  # pragma: no cover
@@ -101,19 +103,30 @@ def evaluate_benchmark_readiness(dataset_path: str | Path) -> dict[str, Any]:
     errors: list[str] = []
     if not (base_path / "pairs.csv").exists():
         errors.append("pairs.csv is missing")
-        return {"ok": False, "errors": errors, "genuine_pairs": 0, "impostor_pairs": 0}
+        return {"ok": False, "errors": errors, "warnings": [], "genuine_pairs": 0, "impostor_pairs": 0, "identities": 0}
 
     if not (base_path / "images").exists():
         errors.append("images directory is missing")
-        return {"ok": False, "errors": errors, "genuine_pairs": 0, "impostor_pairs": 0}
+        return {"ok": False, "errors": errors, "warnings": [], "genuine_pairs": 0, "impostor_pairs": 0, "identities": 0}
 
     with (base_path / "pairs.csv").open("r", encoding="utf-8", newline="") as handle:
         rows = list(csv.DictReader(handle))
+    identity_map: dict[str, str] = {}
+    identity_splits: dict[str, str] = {}
+    identities_csv = base_path / "identities.csv"
+    if identities_csv.exists():
+        with identities_csv.open("r", encoding="utf-8", newline="") as handle:
+            identity_rows = list(csv.DictReader(handle))
+        identity_map = {row.get("image", ""): row.get("subject_id", "") for row in identity_rows}
+        identity_splits = {row.get("image", ""): row.get("split", "") for row in identity_rows}
     if not rows:
         errors.append("pairs.csv does not contain any rows")
 
     genuine_pairs = 0
     impostor_pairs = 0
+    identities: set[str] = set()
+    seen_pairs: set[tuple[str, str]] = set()
+    checked_images: set[Path] = set()
     for row in rows:
         label = row.get("label")
         if label not in {"0", "1"}:
@@ -123,15 +136,50 @@ def evaluate_benchmark_readiness(dataset_path: str | Path) -> dict[str, Any]:
             genuine_pairs += 1
         else:
             impostor_pairs += 1
+        names = [row.get("image_a", ""), row.get("image_b", "")]
+        pair_identities = [identity_map.get(name, name.rsplit(".", 1)[0].rsplit("_", 1)[0]) for name in names]
+        identities.update(pair_identities)
+        if identity_map:
+            if any(name not in identity_map for name in names):
+                errors.append(f"identity metadata missing for pair: {names[0]} / {names[1]}")
+            elif (pair_identities[0] == pair_identities[1]) != (label == "1"):
+                errors.append(f"label conflicts with subject IDs: {names[0]} / {names[1]}")
+            pair_split = row.get("split")
+            image_splits = {identity_splits.get(name, "") for name in names}
+            if pair_split and image_splits != {pair_split}:
+                errors.append(f"pair crosses identity splits: {names[0]} / {names[1]}")
+        pair_key = tuple(sorted(names))
+        if names[0] == names[1]:
+            errors.append(f"self-pair is not allowed: {names[0]}")
+        elif pair_key in seen_pairs:
+            errors.append(f"duplicate pair: {names[0]} / {names[1]}")
+        seen_pairs.add(pair_key)
         image_a = (base_path / "images" / row.get("image_a", "")).resolve()
         image_b = (base_path / "images" / row.get("image_b", "")).resolve()
         if not image_a.exists() or not image_b.exists():
             errors.append(f"image path does not exist for pair {row.get('image_a')} / {row.get('image_b')}")
+            continue
+        for image_path in (image_a, image_b):
+            if image_path in checked_images:
+                continue
+            checked_images.add(image_path)
+            try:
+                with Image.open(image_path) as image:
+                    image.verify()
+            except (OSError, UnidentifiedImageError):
+                errors.append(f"invalid or empty image: {image_path.name}")
     if genuine_pairs == 0:
         errors.append("at least one genuine pair is required")
     if impostor_pairs == 0:
         errors.append("at least one impostor pair is required")
-    return {"ok": not errors, "errors": errors, "genuine_pairs": genuine_pairs, "impostor_pairs": impostor_pairs}
+    warnings = []
+    if len(identities) < 50:
+        warnings.append(f"only {len(identities)} identities; use at least 50 for model comparison")
+    if impostor_pairs < 1000:
+        warnings.append(f"only {impostor_pairs} impostor pairs; FMR 1e-3 is not statistically resolved")
+    if not identity_map:
+        warnings.append("identities.csv missing; subject IDs were inferred from filenames")
+    return {"ok": not errors, "errors": errors, "warnings": warnings, "genuine_pairs": genuine_pairs, "impostor_pairs": impostor_pairs, "identities": len(identities)}
 
 
 def generate_sample_pairs_csv(images_dir: str | Path, output_path: str | Path) -> Path:

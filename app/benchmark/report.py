@@ -21,20 +21,27 @@ def generate_benchmark_report(results: list[dict[str, Any]], output_dir: str | P
 
     frame.to_csv(csv_path, index=False)
 
-    genuine_pairs = int((frame["label"] == 1).sum()) if "label" in frame.columns else 0
-    impostor_pairs = int((frame["label"] == 0).sum()) if "label" in frame.columns else 0
+    pair_columns = ["image_a", "image_b", "label"]
+    unique_pairs = frame.drop_duplicates(pair_columns) if all(c in frame.columns for c in pair_columns) else frame
+    genuine_pairs = int((unique_pairs["label"] == 1).sum()) if "label" in unique_pairs.columns else 0
+    impostor_pairs = int((unique_pairs["label"] == 0).sum()) if "label" in unique_pairs.columns else 0
     summary: dict[str, Any] = {
         "dataset_name": dataset_name,
         "rows": len(frame),
         "genuine_pairs": genuine_pairs,
         "impostor_pairs": impostor_pairs,
         "warning": "This benchmark is only valid for the dataset used in this run.",
+        "dataset_sha256": _first_value(frame, "dataset_sha256", None),
     }
     summary["models"] = []
     model_names = sorted(frame["model_name"].dropna().unique().tolist()) if "model_name" in frame.columns else []
     for model_name in model_names:
         subset = frame[frame["model_name"] == model_name]
-        metrics = compute_benchmark_metrics(subset.to_dict(orient="records"), threshold=0.40)
+        threshold = float(subset["threshold"].iloc[0]) if "threshold" in subset.columns and not subset.empty else 0.40
+        metrics = compute_benchmark_metrics(subset.to_dict(orient="records"), threshold=threshold)
+        successful = subset[subset["error_code"].isna()] if "error_code" in subset.columns else subset
+        latency_column = "image_pipeline_ms" if "image_pipeline_ms" in successful.columns else "total_ms"
+        latency = successful[latency_column].dropna()
         summary["models"].append({
             "model_name": model_name,
             "rows": len(subset),
@@ -43,18 +50,25 @@ def generate_benchmark_report(results: list[dict[str, Any]], output_dir: str | P
             "fnmr_at_fmr_1e-3": metrics["fnmr_at_fmr_1e-3"],
             "fnmr_at_fmr_1e-4": metrics["fnmr_at_fmr_1e-4"],
             "fnmr_at_fmr_1e-5": metrics["fnmr_at_fmr_1e-5"],
-            "avg_latency_ms": float(subset["total_ms"].mean()) if not subset.empty else 0.0,
-            "p50_latency_ms": float(subset["total_ms"].quantile(0.5)) if not subset.empty else 0.0,
-            "p95_latency_ms": float(subset["total_ms"].quantile(0.95)) if not subset.empty else 0.0,
+            "avg_latency_ms": float(latency.mean()) if not latency.empty else 0.0,
+            "p50_latency_ms": float(latency.quantile(0.5)) if not latency.empty else 0.0,
+            "p95_latency_ms": float(latency.quantile(0.95)) if not latency.empty else 0.0,
+            "latency_unit": "per_uncached_image_pipeline",
             "failures": int(subset["error_code"].notna().sum()),
-            "recommendation": "review" if metrics["auc"] < 0.8 else "keep",
+            "recommendation": "insufficient_data" if metrics["auc"] is None or not all(metrics["fmr_target_resolvable"].values()) else ("review" if metrics["auc"] < 0.8 else "keep"),
+            "fmr_resolution": metrics["fmr_resolution"],
+            "fmr_target_resolvable": metrics["fmr_target_resolvable"],
+            "coverage": metrics["valid_pairs"] / len(subset) if len(subset) else 0.0,
             "detector_used": _first_value(subset, "detector_used", "unknown"),
             "alignment_used": _first_value(subset, "alignment_used", "5-point similarity transform to 112x112"),
             "recognizer_used": _first_value(subset, "recognizer_used", model_name),
             "preprocessing_version": _first_value(subset, "preprocessing_version", "align112_rgb_v1"),
             "embedding_dimension": _first_value(subset, "embedding_dim", None),
-            "threshold_used": float(frame["threshold"].mean()) if (not frame.empty and "threshold" in frame.columns) else 0.4,
+            "threshold_used": threshold,
             "license_note": _first_value(subset, "license_note", "weights may have separate licenses"),
+            "model_sha256": _first_value(subset, "model_sha256", None),
+            "runtime_providers": _first_value(subset, "runtime_providers", "unknown"),
+            "runtime_platform": _first_value(subset, "runtime_platform", "unknown"),
         })
 
     json_path.write_text(json.dumps(summary, indent=2), encoding="utf-8")
@@ -70,6 +84,7 @@ def generate_benchmark_report(results: list[dict[str, Any]], output_dir: str | P
         "## Benchmark note",
         "",
         "Important: This benchmark report is only valid for the dataset used in this run. Do not treat these numbers as production truth unless the dataset is representative, identity-disjoint, and large enough for the target FMR.",
+        f"Empirical FMR resolution: {1 / impostor_pairs:.3g}" if impostor_pairs else "Empirical FMR resolution: unavailable",
         "",
         "## Model comparison",
         "",
@@ -78,7 +93,7 @@ def generate_benchmark_report(results: list[dict[str, Any]], output_dir: str | P
     ]
     for item in summary["models"]:
         markdown_lines.append(
-            f"| {item['model_name']} | {item['auc']:.3f} | {item['eer']:.3f} | {item['fnmr_at_fmr_1e-3']:.3f} | {item['fnmr_at_fmr_1e-4']:.3f} | {item['fnmr_at_fmr_1e-5']:.3f} | {item['avg_latency_ms']:.2f} | {item['failures']} |"
+            f"| {item['model_name']} | {_fmt(item['auc'])} | {_fmt(item['eer'])} | {_fmt(item['fnmr_at_fmr_1e-3'])} | {_fmt(item['fnmr_at_fmr_1e-4'])} | {_fmt(item['fnmr_at_fmr_1e-5'])} | {item['avg_latency_ms']:.2f} | {item['failures']} |"
         )
     markdown_lines.extend([
         "",
@@ -95,7 +110,7 @@ def generate_benchmark_report(results: list[dict[str, Any]], output_dir: str | P
         "",
         "## Recommendation",
         "",
-        "- ArcFace remains the default production recognizer for Phase 4.",
+        "- Phase 4 compares models only. Production selection is withheld until model-specific thresholds are calibrated on held-out identities.",
     ])
     md_path.write_text("\n".join(markdown_lines), encoding="utf-8")
 
@@ -108,3 +123,7 @@ def _first_value(frame: pd.DataFrame, column: str, default: Any) -> Any:
     values = frame[column].dropna()
     value = values.iloc[0] if not values.empty else default
     return value.item() if hasattr(value, "item") else value
+
+
+def _fmt(value: float | None) -> str:
+    return "N/A" if value is None else f"{value:.3f}"

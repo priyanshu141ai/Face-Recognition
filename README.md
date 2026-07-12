@@ -208,10 +208,9 @@ python scripts/extract_embedding.py --image person.jpg --output embedding.npy
 
 ## Benchmark workflow
 ```bash
-python scripts/create_sample_pairs_csv.py --images benchmark_data/images --output benchmark_data/pairs.csv
-python scripts/check_benchmark_readiness.py --dataset benchmark_data
-python scripts/run_benchmark.py --dataset benchmark_data --models arcface_onnx --threshold 0.40 --output benchmark_reports
-python scripts/run_benchmark.py --dataset benchmark_data --models arcface_onnx mobilefacenet_onnx --skip-missing-models --output benchmark_reports
+python scripts/prepare_lfw_benchmark.py
+python scripts/check_benchmark_readiness.py --dataset benchmark_data/lfw
+python scripts/run_benchmark.py --dataset benchmark_data/lfw --models arcface_onnx mobilefacenet_onnx --output benchmark_reports/phase4_lfw
 python scripts/compare_models.py --reports benchmark_reports
 ```
 

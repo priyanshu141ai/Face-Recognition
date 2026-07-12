@@ -65,6 +65,7 @@ KNOWN_ERROR_CODES = {
     "yunet_model_not_found",
     "model_not_found",
     "embedding_failed",
+    "calibration_profile_invalid",
 }
 
 

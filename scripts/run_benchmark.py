@@ -9,24 +9,23 @@ if str(PROJECT_ROOT) not in sys.path:
 from app.benchmark.report import generate_benchmark_report
 from app.benchmark.runner import BenchmarkRunner
 from app.core.config import get_settings
-from app.benchmark.model_artifacts import validate_model_artifacts
+from app.benchmark.model_artifacts import evaluate_benchmark_readiness, inspect_onnx_model
 
 
-def _resolve_models_to_run(models: list[str], skip_missing_models: bool) -> list[str]:
+def _resolve_models_to_run(models: list[str], skip_missing_models: bool, settings) -> list[str]:
+    def configured_path(value: str) -> Path:
+        path = Path(value)
+        return path if path.is_absolute() else PROJECT_ROOT / path
+
     model_paths = {
-        "arcface_onnx": PROJECT_ROOT / "models" / "face-recognition-resnet100-arcface.onnx",
-        "mobilefacenet_onnx": PROJECT_ROOT / "models" / "mobilefacenet.onnx",
+        "arcface_onnx": configured_path(settings.arcface_model_path),
+        "mobilefacenet_onnx": configured_path(settings.mobilefacenet_model_path),
         "insightface_buffalo_l": None,
     }
     selected: list[str] = []
     for model in models:
         if model in {"mock", "arcface_onnx", "mobilefacenet_onnx", "insightface_buffalo_l"}:
-            if model == "arcface_onnx" and not model_paths[model].exists():
-                if skip_missing_models:
-                    print(f"Skipping {model}: missing {model_paths[model]}")
-                    continue
-                raise SystemExit(f"Missing required model artifact for {model}: {model_paths[model]}")
-            if model == "mobilefacenet_onnx" and not model_paths[model].exists():
+            if model in {"arcface_onnx", "mobilefacenet_onnx"} and inspect_onnx_model(model_paths[model]).get("status") != "LOADED":
                 if skip_missing_models:
                     print(f"Skipping {model}: missing {model_paths[model]}")
                     continue
@@ -57,32 +56,40 @@ def main() -> None:
     parser.add_argument("--threshold", type=float, default=None)
     parser.add_argument("--output", default=None)
     parser.add_argument("--skip-missing-models", action="store_true")
+    parser.add_argument("--detector", choices=["yunet", "mock"], default="yunet")
+    parser.add_argument("--allow-mock", action="store_true", help="Required acknowledgement for non-scientific mock runs")
+    parser.add_argument("--dataset-name", default=None)
     args = parser.parse_args()
 
     settings = get_settings()
     output_dir = Path(args.output or settings.benchmark_output_dir)
-    ok, statuses = validate_model_artifacts(models_dir=PROJECT_ROOT / "models", root_dir=PROJECT_ROOT)
-    required_missing = [item for item in statuses if item["required"] and item["status"] == "MISSING"]
-    if required_missing and not args.skip_missing_models:
-        missing_paths = ", ".join(item["name"] for item in required_missing)
-        print(f"Missing required model artifact(s): {missing_paths}")
-        raise SystemExit(1)
-    if required_missing:
-        print("Skipping benchmark for missing required model artifacts:")
-        for item in required_missing:
-            print(f"- {item['name']}: {item['path']}")
+    readiness = evaluate_benchmark_readiness(args.dataset)
+    if not readiness["ok"]:
+        raise SystemExit("Dataset is not benchmark-ready: " + "; ".join(readiness["errors"]))
+    for warning in readiness.get("warnings", []):
+        print(f"WARNING: {warning}")
+    yunet_path = Path(settings.yunet_model_path)
+    yunet_path = yunet_path if yunet_path.is_absolute() else PROJECT_ROOT / yunet_path
+    if args.detector == "yunet" and inspect_onnx_model(yunet_path).get("status") != "LOADED":
+        raise SystemExit(f"YuNet artifact is missing or invalid: {yunet_path}")
 
-    models_to_run = _resolve_models_to_run(args.models, skip_missing_models=args.skip_missing_models)
+    models_to_run = _resolve_models_to_run(args.models, skip_missing_models=args.skip_missing_models, settings=settings)
     if not models_to_run:
         print("No runnable models remain after model validation")
         output_dir.mkdir(parents=True, exist_ok=True)
-        generate_benchmark_report([], output_dir=output_dir, dataset_name="benchmark")
+        generate_benchmark_report([], output_dir=output_dir, dataset_name=args.dataset_name or Path(args.dataset).name)
         print("Benchmark complete")
         return
 
-    runner = BenchmarkRunner(models=models_to_run, dataset_path=args.dataset, threshold=args.threshold)
+    runner = BenchmarkRunner(
+        models=models_to_run,
+        dataset_path=args.dataset,
+        threshold=args.threshold,
+        detector_provider=args.detector,
+        allow_mock=args.allow_mock,
+    )
     results = runner.run()
-    paths = generate_benchmark_report(results, output_dir=output_dir, dataset_name="benchmark")
+    paths = generate_benchmark_report(results, output_dir=output_dir, dataset_name=args.dataset_name or Path(args.dataset).name)
 
     print("Benchmark complete")
     for path in paths.values():

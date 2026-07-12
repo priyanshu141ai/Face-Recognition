@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.core.config import get_settings
-from app.core.errors import ArcFaceInferenceError, ArcFaceModelNotFoundError, DetectorProviderError, FaceAlignmentError, FaceQualityError, InvalidEmbeddingShapeError, InvalidImagePayloadError, RecognizerProviderError
+from app.core.errors import ArcFaceInferenceError, ArcFaceModelNotFoundError, CalibrationProfileError, DetectorProviderError, FaceAlignmentError, FaceQualityError, InvalidEmbeddingShapeError, InvalidImagePayloadError, RecognizerProviderError
 from app.core.security import require_bearer_token
 from app.schemas.face import DetectRequest, EmbedRequest, VerifyRequest, VerifyResponse
 from app.services.image_decoder import ImageDecoder
@@ -16,6 +16,7 @@ VERIFY_ERROR_MAP = {
     FaceAlignmentError: (status.HTTP_500_INTERNAL_SERVER_ERROR, "face_alignment_failed"),
     RecognizerProviderError: (status.HTTP_500_INTERNAL_SERVER_ERROR, "recognizer_provider_invalid"),
     DetectorProviderError: (status.HTTP_500_INTERNAL_SERVER_ERROR, "detector_provider_invalid"),
+    CalibrationProfileError: (status.HTTP_500_INTERNAL_SERVER_ERROR, "calibration_profile_invalid"),
 }
 
 
@@ -26,8 +27,8 @@ def _api_error(status_code: int, request_id: str | None, code: str, message: str
 @router.post("/verify", response_model=VerifyResponse)
 def verify_face(request: VerifyRequest, _: None = Depends(require_bearer_token)) -> dict[str, object]:
     settings = get_settings()
-    pipeline = FaceVerificationPipeline()
     try:
+        pipeline = FaceVerificationPipeline()
         return pipeline.verify(request, settings.max_image_mb)
     except tuple(VERIFY_ERROR_MAP) as exc:
         status_code, code = VERIFY_ERROR_MAP[type(exc)]

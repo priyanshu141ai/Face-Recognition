@@ -16,6 +16,11 @@ models/trt_cache/
 benchmark_reports/*.csv
 benchmark_reports/*.json
 benchmark_reports/*.md
+benchmark_reports/**/*.csv
+benchmark_reports/**/*.json
+benchmark_reports/**/*.md
+benchmark_data/lfw/
+benchmark_data/lfw_phase5/
 outputs/
 test_images/
 *.npy

@@ -1,4 +1,5 @@
 from pathlib import Path
+import hashlib
 from typing import Any
 
 import numpy as np
@@ -28,6 +29,13 @@ class ArcFaceOnnxRecognizer(BaseFaceRecognizer):
             )
         if ort is None:
             raise ArcFaceInferenceError("onnxruntime is not installed")
+        with open(self.settings.arcface_model_path, "rb") as handle:
+            digest = hashlib.file_digest(handle, "sha256").hexdigest()
+        if self.settings.arcface_sha256 and digest != self.settings.arcface_sha256:
+            raise ArcFaceInferenceError("ArcFace model checksum does not match the pinned artifact")
+        if digest == self.settings.arcface_sha256 and self.settings.arcface_normalization != "raw_rgb_0_255":
+            raise ArcFaceInferenceError("pinned ArcFace model requires raw_rgb_0_255 preprocessing")
+        self.sha256 = digest
 
         self.session = ort.InferenceSession(self.settings.arcface_model_path, providers=self.providers)
         self.input_name = self.session.get_inputs()[0].name
@@ -80,4 +88,6 @@ class ArcFaceOnnxRecognizer(BaseFaceRecognizer):
             "providers": self.providers,
             "embedding_dim": self.settings.arcface_embedding_dim,
             "normalization": self.settings.arcface_normalization,
+            "sha256": self.sha256,
+            "license_note": "ONNX Model Zoo ArcFace weights; verify deployment license",
         }

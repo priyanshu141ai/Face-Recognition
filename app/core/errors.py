@@ -50,6 +50,12 @@ class DetectorProviderError(Exception):
         self.message = message
 
 
+class CalibrationProfileError(Exception):
+    def __init__(self, message: str) -> None:
+        super().__init__(message)
+        self.message = message
+
+
 def http_error_from_exception(exc: Exception) -> HTTPException:
     if isinstance(exc, FaceQualityError):
         return HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail={"error_code": exc.code, "message": exc.message})
@@ -67,4 +73,6 @@ def http_error_from_exception(exc: Exception) -> HTTPException:
         return HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail={"error_code": "recognizer_provider_invalid", "message": exc.message})
     if isinstance(exc, DetectorProviderError):
         return HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail={"error_code": "detector_provider_invalid", "message": exc.message})
+    if isinstance(exc, CalibrationProfileError):
+        return HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail={"error_code": "calibration_profile_invalid", "message": exc.message})
     return HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail={"error_code": "internal_error", "message": "Internal server error"})

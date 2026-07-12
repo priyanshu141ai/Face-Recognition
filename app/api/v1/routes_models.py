@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends
 
 from app.core.config import get_settings
 from app.core.security import require_bearer_token
+from app.services.calibration import resolve_match_policy
 
 router = APIRouter(prefix="/v1/models", tags=["models"])
 
@@ -9,6 +10,7 @@ router = APIRouter(prefix="/v1/models", tags=["models"])
 @router.get("/current")
 def current_models(_: None = Depends(require_bearer_token)) -> dict[str, object]:
     settings = get_settings()
+    calibrator, threshold = resolve_match_policy(settings)
     detector_names = {
         "mock": "mock_yunet_adapter_v1",
         "yunet": "yunet_2023mar_opencv",
@@ -55,11 +57,10 @@ def current_models(_: None = Depends(require_bearer_token)) -> dict[str, object]
         },
         "threshold": {
             "score_type": "cosine",
-            "value": settings.match_threshold,
-            "operating_point": "phase3_fixed_threshold",
+            "value": threshold,
+            "operating_point": calibrator.operating_point,
         },
         "calibration": {
-            "name": "linear_mock_v1",
-            "real_probability": False,
+            **calibrator.metadata(),
         },
     }

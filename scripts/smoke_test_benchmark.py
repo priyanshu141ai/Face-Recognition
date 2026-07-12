@@ -12,7 +12,7 @@ from app.validation.report import ValidationReport
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--dataset", default="benchmark_data")
+    parser.add_argument("--dataset", default="benchmark_data/lfw")
     args = parser.parse_args()
 
     report = ValidationReport()

@@ -13,7 +13,7 @@ from app.models.mock_recognizer import MockFaceRecognizer
 from app.models.mobilefacenet_onnx_recognizer import MobileFaceNetOnnxRecognizer
 from app.models.yunet_detector import YuNetFaceDetector
 from app.schemas.face import FaceDetectionSchema, VerifyRequest
-from app.services.calibration import ScoreCalibrator
+from app.services.calibration import resolve_match_policy
 from app.services.image_decoder import ImageDecoder
 from app.services.matcher import FaceMatcher
 from app.services.preprocessing import Preprocessor
@@ -27,8 +27,8 @@ class FaceVerificationPipeline:
         self.preprocessor = Preprocessor()
         self.detector = None
         self.recognizer = None
-        self.matcher = FaceMatcher(threshold=self.settings.match_threshold)
-        self.calibrator = ScoreCalibrator()
+        self.calibrator, threshold = resolve_match_policy(self.settings)
+        self.matcher = FaceMatcher(threshold=threshold)
 
     def verify(self, request: VerifyRequest, max_image_mb: float) -> dict[str, Any]:
         timings = {"decode": 0.0, "detect": 0.0, "align": 0.0, "embed": 0.0, "match": 0.0, "total": 0.0}
@@ -96,7 +96,7 @@ class FaceVerificationPipeline:
             "threshold": {
                 "score_type": "cosine",
                 "value": self.matcher.threshold,
-                "operating_point": "phase3_fixed_threshold",
+                "operating_point": self.calibrator.operating_point,
             },
             "model_versions": {
                 "detector": self._detector_name(),

@@ -6,6 +6,9 @@ import numpy as np
 from sklearn.metrics import auc, roc_curve
 
 
+FMR_TARGETS = (1e-3, 1e-4, 1e-5)
+
+
 def _scores_and_labels(results: list[dict[str, Any]]) -> tuple[np.ndarray, np.ndarray]:
     valid_results = [
         item
@@ -24,10 +27,11 @@ def compute_benchmark_metrics(results: list[dict[str, Any]], threshold: float) -
     scores, labels = _scores_and_labels(results)
     preds = (scores >= threshold).astype(int)
 
-    if len(scores) == 0 or len(np.unique(labels)) != 2:
+    has_both_classes = len(scores) > 0 and len(np.unique(labels)) == 2
+    if not has_both_classes:
         fpr = []
         tpr = []
-        roc_auc = 0.0
+        roc_auc = None
         genuine_scores = scores[labels == 1]
         impostor_scores = scores[labels == 0]
     else:
@@ -37,12 +41,12 @@ def compute_benchmark_metrics(results: list[dict[str, Any]], threshold: float) -
         impostor_scores = scores[labels == 0]
 
     if len(genuine_scores) == 0 or len(impostor_scores) == 0:
-        eer = 0.0
-        fmr_at_threshold = 0.0
-        fnmr_at_threshold = 0.0
-        fnmr_at_fmr_1e3 = 0.0
-        fnmr_at_fmr_1e4 = 0.0
-        fnmr_at_fmr_1e5 = 0.0
+        eer = None
+        fmr_at_threshold = None
+        fnmr_at_threshold = None
+        fnmr_at_fmr_1e3 = None
+        fnmr_at_fmr_1e4 = None
+        fnmr_at_fmr_1e5 = None
         best_threshold_by_eer = threshold
     else:
         best_gap = float("inf")
@@ -60,14 +64,30 @@ def compute_benchmark_metrics(results: list[dict[str, Any]], threshold: float) -
         fmr_at_threshold = float(np.mean(impostor_scores >= threshold))
         fnmr_at_threshold = float(np.mean(genuine_scores < threshold))
 
-        def fnmr_at_target_fmr(target_fmr: float) -> float:
-            target_threshold = float(np.quantile(impostor_scores, max(0.0, 1.0 - target_fmr)))
+        def fnmr_at_target_fmr(target_fmr: float) -> float | None:
+            if len(impostor_scores) < int(np.ceil(1.0 / target_fmr)):
+                return None
+            # A strict threshold above the relevant impostor order statistic
+            # avoids accidentally exceeding the requested empirical FMR.
+            allowed_false_matches = int(np.floor(target_fmr * len(impostor_scores)))
+            descending = np.sort(impostor_scores)[::-1]
+            target_threshold = (
+                float(np.nextafter(descending[allowed_false_matches], np.inf))
+                if allowed_false_matches < len(descending)
+                else float("-inf")
+            )
             return float(np.mean(genuine_scores < target_threshold))
 
         fnmr_at_fmr_1e3 = fnmr_at_target_fmr(1e-3)
         fnmr_at_fmr_1e4 = fnmr_at_target_fmr(1e-4)
         fnmr_at_fmr_1e5 = fnmr_at_target_fmr(1e-5)
 
+    impostor_count = int(len(impostor_scores))
+    fmr_resolution = 1.0 / impostor_count if impostor_count else None
+    fmr_target_resolvable = {
+        f"{target:.0e}": impostor_count >= int(np.ceil(1.0 / target))
+        for target in FMR_TARGETS
+    }
     return {
         "auc": roc_auc,
         "eer": eer,
@@ -84,4 +104,9 @@ def compute_benchmark_metrics(results: list[dict[str, Any]], threshold: float) -
         "fpr": fpr.tolist() if hasattr(fpr, "tolist") else list(fpr),
         "tpr": tpr.tolist() if hasattr(tpr, "tolist") else list(tpr),
         "best_threshold_by_eer": best_threshold_by_eer,
+        "fmr_resolution": fmr_resolution,
+        "fmr_target_resolvable": fmr_target_resolvable,
+        "valid_pairs": int(len(scores)),
+        "genuine_pairs": int(len(genuine_scores)),
+        "impostor_pairs": impostor_count,
     }

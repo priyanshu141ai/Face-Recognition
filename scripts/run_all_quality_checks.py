@@ -41,7 +41,7 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--mode", choices=["auto", "mock", "real"], default="auto")
     parser.add_argument("--base-url", default="http://127.0.0.1:8000")
-    parser.add_argument("--dataset", default="benchmark_data")
+    parser.add_argument("--dataset", default="benchmark_data/lfw")
     parser.add_argument("--skip-api", action="store_true")
     parser.add_argument("--skip-benchmark", action="store_true")
     parser.add_argument("--skip-pytest", action="store_true")

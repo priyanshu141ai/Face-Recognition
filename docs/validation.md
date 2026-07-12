@@ -35,12 +35,12 @@ python scripts/smoke_test_api.py --base-url http://127.0.0.1:8000
 
 ## Run benchmark readiness check
 ```bash
-python scripts/smoke_test_benchmark.py --dataset benchmark_data
+python scripts/smoke_test_benchmark.py --dataset benchmark_data/lfw
 ```
 
 ## Run full system check
 ```bash
-python scripts/full_system_check.py --base-url http://127.0.0.1:8000 --dataset benchmark_data
+python scripts/full_system_check.py --base-url http://127.0.0.1:8000 --dataset benchmark_data/lfw
 ```
 
 Optional reports:
@@ -84,7 +84,7 @@ uvicorn app.main:app --reload
 
 Then:
 ```bash
-python scripts/full_system_check.py --base-url http://127.0.0.1:8000 --dataset benchmark_data
+python scripts/full_system_check.py --base-url http://127.0.0.1:8000 --dataset benchmark_data/lfw
 ```
 
 ## Optional integration tests

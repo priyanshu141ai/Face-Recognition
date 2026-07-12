@@ -11,7 +11,7 @@ from app.benchmark.model_artifacts import evaluate_benchmark_readiness
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--dataset", default="benchmark_data")
+    parser.add_argument("--dataset", default="benchmark_data/lfw")
     args = parser.parse_args()
 
     readiness = evaluate_benchmark_readiness(args.dataset)
@@ -21,12 +21,15 @@ def main() -> None:
     print(f"Status: {'READY' if readiness['ok'] else 'NOT READY'}")
     print(f"Genuine pairs: {readiness['genuine_pairs']}")
     print(f"Impostor pairs: {readiness['impostor_pairs']}")
+    print(f"Identities: {readiness.get('identities', 0)}")
     if readiness["errors"]:
         print("Errors:")
         for error in readiness["errors"]:
             print(f"- {error}")
     else:
         print("No errors found.")
+    for warning in readiness.get("warnings", []):
+        print(f"WARNING: {warning}")
 
     raise SystemExit(0 if readiness["ok"] else 1)
 

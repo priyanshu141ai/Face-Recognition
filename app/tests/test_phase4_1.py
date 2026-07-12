@@ -4,6 +4,7 @@ import sys
 from pathlib import Path
 
 import pytest
+from PIL import Image
 
 from app.benchmark.model_artifacts import collect_model_artifact_statuses, evaluate_benchmark_readiness, generate_sample_pairs_csv
 
@@ -55,8 +56,14 @@ def test_create_sample_pairs_csv_creates_expected_output(tmp_path: Path) -> None
 def test_run_benchmark_skips_missing_optional_model_when_requested(tmp_path: Path) -> None:
     repo_root = Path(__file__).resolve().parents[2]
     script = repo_root / "scripts" / "run_benchmark.py"
+    dataset = tmp_path / "dataset"
+    images = dataset / "images"
+    images.mkdir(parents=True)
+    for name in ("a_1.jpg", "a_2.jpg", "b_1.jpg"):
+        Image.new("RGB", (64, 64), color=(128, 128, 128)).save(images / name)
+    (dataset / "pairs.csv").write_text("image_a,image_b,label\na_1.jpg,a_2.jpg,1\na_1.jpg,b_1.jpg,0\n", encoding="utf-8")
     result = subprocess.run(
-        [sys.executable, str(script), "--dataset", str(repo_root / "benchmark_data"), "--models", "arcface_onnx", "mobilefacenet_onnx", "--skip-missing-models", "--output", str(tmp_path / "reports")],
+        [sys.executable, str(script), "--dataset", str(dataset), "--models", "arcface_onnx", "mobilefacenet_onnx", "--skip-missing-models", "--detector", "mock", "--allow-mock", "--output", str(tmp_path / "reports")],
         capture_output=True,
         text=True,
         cwd=repo_root,

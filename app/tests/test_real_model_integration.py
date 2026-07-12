@@ -10,6 +10,8 @@ from PIL import Image
 from app.main import app
 from app.models.arcface_onnx_recognizer import ArcFaceOnnxRecognizer
 from app.models.yunet_detector import YuNetFaceDetector
+from app.models.mobilefacenet_onnx_recognizer import MobileFaceNetOnnxRecognizer
+from app.core.config import Settings
 
 ROOT = Path(__file__).resolve().parents[2]
 YUNET = ROOT / "models/face_detection_yunet_2023mar.onnx"
@@ -49,11 +51,20 @@ def test_arcface_real_preprocessing_not_constant(monkeypatch) -> None:
     _require_real()
     monkeypatch.setenv("RECOGNIZER_PROVIDER", "arcface_onnx")
     monkeypatch.setenv("ARCFACE_MODEL_PATH", str(ARCFACE))
-    monkeypatch.setenv("ARCFACE_NORMALIZATION", "raw_0_255")
+    monkeypatch.setenv("ARCFACE_NORMALIZATION", "raw_rgb_0_255")
     recognizer = ArcFaceOnnxRecognizer()
     blank = recognizer.embed(np.zeros((112, 112, 3), dtype=np.uint8))
     random = recognizer.embed(np.random.default_rng(1).integers(0, 256, (112, 112, 3), dtype=np.uint8))
     assert float(np.dot(blank, random)) < 0.9
+
+
+def test_pinned_model_preprocessing_contracts() -> None:
+    pixel = np.array([[[0, 127.5, 255]]], dtype=np.float32)
+    arcface = ArcFaceOnnxRecognizer.__new__(ArcFaceOnnxRecognizer)
+    arcface.settings = Settings(arcface_normalization="raw_rgb_0_255")
+    assert arcface._preprocess(pixel)[0, :, 0, 0].tolist() == [255.0, 127.5, 0.0]
+    mobile = MobileFaceNetOnnxRecognizer.__new__(MobileFaceNetOnnxRecognizer)
+    assert mobile._preprocess(pixel)[0, :, 0, 0].tolist() == [1.0, 0.0, -1.0]
 
 
 def test_real_api_blank_image_fails_cleanly(monkeypatch) -> None:

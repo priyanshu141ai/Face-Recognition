@@ -20,6 +20,7 @@ Use this file as the roadmap for the backend evolution. Each phase should be imp
 ## Phase 4: benchmarking buffalo_l, FaceNet, MobileFaceNet
 - Compare detection and recognition quality across multiple models
 - Gather timing and quality metrics for future tuning
+- Status: complete for ArcFace R100 vs MobileFaceNet on the reproducible LFW research set; buffalo_l remains optional
 
 ## Phase 4.1: model artifact validation and real benchmark workflow
 - Keep model weights out of Git
