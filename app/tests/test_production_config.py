@@ -9,11 +9,28 @@ def _production_settings(**overrides) -> Settings:
     values = {
         "environment": "production",
         "api_bearer_token": "service-secret",
+        "gateway_assertion_required": True,
+        "allow_unsigned_identity_headers": False,
+        "gateway_assertion_issuer": "https://gateway.example.com",
+        "gateway_assertion_audience": "face-api",
+        "gateway_allowed_tenants": "tenant-001",
+        "gateway_jwks_path": "gateway-public.jwks.json",
+        "require_recent_device_attestation": True,
+        "allowed_attestation_app_identifiers": "com.example.ess",
         "biometric_encryption_key": Fernet.generate_key().decode("ascii"),
         "device_reset_token": "reset-secret",
         "cors_allowed_origins": "https://ess.example.com",
         "detector_provider": "yunet",
         "recognizer_provider": "arcface_onnx",
+        "enable_api_docs": False,
+        "require_calibration": True,
+        "liveness_required": True,
+        "liveness_provider": "external_assertion",
+        "liveness_assertion_secret": "provider-secret",
+        "device_proof_required": True,
+        "database_url": "postgresql+psycopg://user:pass@db/app",
+        "database_auto_create": False,
+        "audit_hash_key": "audit-secret",
     }
     values.update(overrides)
     return Settings(**values)

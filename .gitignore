@@ -3,6 +3,10 @@ __pycache__/
 *.log
 .venv/
 .env
+.env.docker.local
+.env.coolify.staging
+.env.staging.local
+coolify-secrets.env
 .pytest_cache/
 models/*.onnx
 models/*.onnx.*
@@ -30,5 +34,6 @@ private_docs/
 *.private.md
 interview_notes/
 data/
+docker-data/
 !models/.gitkeep
 !benchmark_reports/.gitkeep

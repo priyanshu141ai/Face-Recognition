@@ -1,8 +1,11 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 
+from app.api.dependencies import abuse_service, repository_dependency
 from app.core.config import get_settings
 from app.core.errors import ArcFaceInferenceError, ArcFaceModelNotFoundError, CalibrationProfileError, DetectorProviderError, FaceAlignmentError, FaceQualityError, InvalidEmbeddingShapeError, InvalidImagePayloadError, RecognizerProviderError
+from app.core.gateway_security import gateway_action, require_body_binding
 from app.core.security import require_bearer_token
+from app.schemas.gateway import GatewayAssertionClaims
 from app.schemas.face import DetectRequest, EmbedRequest, VerifyRequest, VerifyResponse
 from app.services.image_decoder import ImageDecoder
 from app.services.pipeline import get_face_verification_pipeline
@@ -24,9 +27,24 @@ def _api_error(status_code: int, request_id: str | None, code: str, message: str
     return HTTPException(status_code=status_code, detail={"request_id": request_id, "error": {"code": code, "message": message}})
 
 
-@router.post("/verify", response_model=VerifyResponse)
-def verify_face(request: VerifyRequest, _: None = Depends(require_bearer_token)) -> dict[str, object]:
+def _rate_limit(request: Request, action: str) -> None:
     settings = get_settings()
+    repository = repository_dependency()
+    abuse_service(repository).check(
+        request, action, limit=settings.low_level_face_limit_per_minute, window_seconds=60
+    )
+
+
+@router.post("/verify", response_model=VerifyResponse)
+def verify_face(
+    request: VerifyRequest,
+    http_request: Request,
+    _: None = Depends(require_bearer_token),
+    gateway: GatewayAssertionClaims | None = Depends(gateway_action("face_engine_verify")),
+) -> dict[str, object]:
+    require_body_binding(gateway, request_id=request.request_id)
+    settings = get_settings()
+    _rate_limit(http_request, "face_engine_verify")
     try:
         pipeline = get_face_verification_pipeline()
         return pipeline.verify(request, settings.max_image_mb)
@@ -40,11 +58,20 @@ def verify_face(request: VerifyRequest, _: None = Depends(require_bearer_token))
 
 
 @router.post("/detect")
-def detect_faces(request: DetectRequest, _: None = Depends(require_bearer_token)) -> dict[str, object]:
+def detect_faces(
+    request: DetectRequest,
+    http_request: Request,
+    _: None = Depends(require_bearer_token),
+    gateway: GatewayAssertionClaims | None = Depends(gateway_action("face_engine_detect")),
+) -> dict[str, object]:
+    require_body_binding(gateway, request_id=request.request_id)
     settings = get_settings()
+    _rate_limit(http_request, "face_engine_detect")
     try:
-        decoder = ImageDecoder()
-        image_bytes = decoder.decode(request.image.data, request.image.kind)
+        decoder = ImageDecoder(settings.max_image_pixels)
+        image_bytes = decoder.decode(
+            request.image.data, request.image.kind, int(settings.max_image_mb * 1024 * 1024)
+        )
         if len(image_bytes) / (1024 * 1024) > settings.max_image_mb:
             raise InvalidImagePayloadError(f"image exceeds {settings.max_image_mb}MB")
         pipeline = get_face_verification_pipeline()
@@ -61,12 +88,21 @@ def detect_faces(request: DetectRequest, _: None = Depends(require_bearer_token)
 
 
 @router.post("/embed")
-def embed_faces(request: EmbedRequest, _: None = Depends(require_bearer_token)) -> dict[str, object]:
+def embed_faces(
+    request: EmbedRequest,
+    http_request: Request,
+    _: None = Depends(require_bearer_token),
+    gateway: GatewayAssertionClaims | None = Depends(gateway_action("face_engine_embed")),
+) -> dict[str, object]:
+    require_body_binding(gateway, request_id=request.request_id)
     settings = get_settings()
+    _rate_limit(http_request, "face_engine_embed")
     try:
         pipeline = get_face_verification_pipeline()
         with pipeline.inference_lock:
-            image_bytes = ImageDecoder().decode(request.image.data, request.image.kind)
+            image_bytes = ImageDecoder(settings.max_image_pixels).decode(
+                request.image.data, request.image.kind, int(settings.max_image_mb * 1024 * 1024)
+            )
             if len(image_bytes) / (1024 * 1024) > settings.max_image_mb:
                 raise InvalidImagePayloadError(f"image exceeds {settings.max_image_mb}MB")
             faces = pipeline._get_detector().detect(image_bytes, None)
