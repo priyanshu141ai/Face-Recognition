@@ -1,9 +1,11 @@
 import time
+import threading
+from functools import lru_cache
 from typing import Any
 
 import numpy as np
 
-from app.core.config import get_settings
+from app.core.config import Settings, get_settings
 from app.core.errors import DetectorProviderError, FaceQualityError, InvalidImagePayloadError, RecognizerProviderError
 from app.core.logging import get_logger, log_event
 from app.models.arcface_onnx_recognizer import ArcFaceOnnxRecognizer
@@ -20,9 +22,10 @@ from app.services.preprocessing import Preprocessor
 
 
 class FaceVerificationPipeline:
-    def __init__(self) -> None:
-        self.settings = get_settings()
+    def __init__(self, settings: Settings | None = None) -> None:
+        self.settings = settings or get_settings()
         self.logger = get_logger("pipeline")
+        self.inference_lock = threading.RLock()
         self.decoder = ImageDecoder()
         self.preprocessor = Preprocessor()
         self.detector = None
@@ -31,6 +34,10 @@ class FaceVerificationPipeline:
         self.matcher = FaceMatcher(threshold=threshold)
 
     def verify(self, request: VerifyRequest, max_image_mb: float) -> dict[str, Any]:
+        with self.inference_lock:
+            return self._verify_unlocked(request, max_image_mb)
+
+    def _verify_unlocked(self, request: VerifyRequest, max_image_mb: float) -> dict[str, Any]:
         timings = {"decode": 0.0, "detect": 0.0, "align": 0.0, "embed": 0.0, "match": 0.0, "total": 0.0}
         start = time.perf_counter()
 
@@ -117,6 +124,13 @@ class FaceVerificationPipeline:
             }
         return payload
 
+    def ensure_ready(self) -> dict[str, str]:
+        """Load and validate configured providers once, then reuse them across requests."""
+        with self.inference_lock:
+            self._get_detector()
+            self._get_recognizer()
+            return {"detector": self._detector_name(), "recognizer": self._recognizer_name()}
+
     def _get_detector(self):
         if self.detector is None:
             provider = self.settings.detector_provider
@@ -191,3 +205,12 @@ class FaceVerificationPipeline:
             raise FaceQualityError("multiple_faces_detected", f"multiple faces detected in {which}")
         if any(detection.detection_confidence < policy.min_detection_confidence for detection in detections):
             raise FaceQualityError("face_quality_rejected", f"face quality rejected for {which}")
+
+
+@lru_cache(maxsize=8)
+def _pipeline_for_settings(settings: Settings) -> FaceVerificationPipeline:
+    return FaceVerificationPipeline(settings)
+
+
+def get_face_verification_pipeline() -> FaceVerificationPipeline:
+    return _pipeline_for_settings(get_settings())

@@ -5,7 +5,7 @@ from app.core.errors import ArcFaceInferenceError, ArcFaceModelNotFoundError, Ca
 from app.core.security import require_bearer_token
 from app.schemas.face import DetectRequest, EmbedRequest, VerifyRequest, VerifyResponse
 from app.services.image_decoder import ImageDecoder
-from app.services.pipeline import FaceVerificationPipeline
+from app.services.pipeline import get_face_verification_pipeline
 
 router = APIRouter(prefix="/v1/faces", tags=["faces"])
 
@@ -28,7 +28,7 @@ def _api_error(status_code: int, request_id: str | None, code: str, message: str
 def verify_face(request: VerifyRequest, _: None = Depends(require_bearer_token)) -> dict[str, object]:
     settings = get_settings()
     try:
-        pipeline = FaceVerificationPipeline()
+        pipeline = get_face_verification_pipeline()
         return pipeline.verify(request, settings.max_image_mb)
     except tuple(VERIFY_ERROR_MAP) as exc:
         status_code, code = VERIFY_ERROR_MAP[type(exc)]
@@ -47,9 +47,10 @@ def detect_faces(request: DetectRequest, _: None = Depends(require_bearer_token)
         image_bytes = decoder.decode(request.image.data, request.image.kind)
         if len(image_bytes) / (1024 * 1024) > settings.max_image_mb:
             raise InvalidImagePayloadError(f"image exceeds {settings.max_image_mb}MB")
-        pipeline = FaceVerificationPipeline()
-        faces = pipeline._get_detector().detect(image_bytes, None)
-        pipeline._validate_quality(faces, request.quality_policy, "image")
+        pipeline = get_face_verification_pipeline()
+        with pipeline.inference_lock:
+            faces = pipeline._get_detector().detect(image_bytes, None)
+            pipeline._validate_quality(faces, request.quality_policy, "image")
         return {"request_id": request.request_id, "faces": [face.model_dump() for face in faces]}
     except FaceQualityError as exc:
         raise _api_error(422, request.request_id, exc.code, exc.message) from exc
@@ -63,15 +64,16 @@ def detect_faces(request: DetectRequest, _: None = Depends(require_bearer_token)
 def embed_faces(request: EmbedRequest, _: None = Depends(require_bearer_token)) -> dict[str, object]:
     settings = get_settings()
     try:
-        pipeline = FaceVerificationPipeline()
-        image_bytes = ImageDecoder().decode(request.image.data, request.image.kind)
-        if len(image_bytes) / (1024 * 1024) > settings.max_image_mb:
-            raise InvalidImagePayloadError(f"image exceeds {settings.max_image_mb}MB")
-        faces = pipeline._get_detector().detect(image_bytes, None)
-        pipeline._validate_quality(faces, request.quality_policy, "image")
-        selected = pipeline._select_faces(faces, request.face_selector, request.face_index)
-        aligned = pipeline.preprocessor.align_face(pipeline._decode_image_bytes(image_bytes), selected[0])
-        embedding = pipeline._get_recognizer().embed(aligned)
+        pipeline = get_face_verification_pipeline()
+        with pipeline.inference_lock:
+            image_bytes = ImageDecoder().decode(request.image.data, request.image.kind)
+            if len(image_bytes) / (1024 * 1024) > settings.max_image_mb:
+                raise InvalidImagePayloadError(f"image exceeds {settings.max_image_mb}MB")
+            faces = pipeline._get_detector().detect(image_bytes, None)
+            pipeline._validate_quality(faces, request.quality_policy, "image")
+            selected = pipeline._select_faces(faces, request.face_selector, request.face_index)
+            aligned = pipeline.preprocessor.align_face(pipeline._decode_image_bytes(image_bytes), selected[0])
+            embedding = pipeline._get_recognizer().embed(aligned)
         return {
             "request_id": request.request_id,
             "embedding": embedding.tolist() if request.return_embeddings and settings.allow_embedding_return else None,
@@ -82,4 +84,4 @@ def embed_faces(request: EmbedRequest, _: None = Depends(require_bearer_token)) 
     except InvalidImagePayloadError as exc:
         raise _api_error(415, request.request_id, "invalid_image_payload", exc.message) from exc
     except Exception as exc:
-        raise _api_error(500, request.request_id, "embedding_failed", str(exc)) from exc
+        raise _api_error(500, request.request_id, "embedding_failed", "Face embedding failed") from exc

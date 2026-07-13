@@ -8,6 +8,7 @@ from app.core.config import get_settings
 
 
 USER_ID_PATTERN = re.compile(r"^[A-Za-z0-9._:@-]{1,128}$")
+DEVICE_ID_PATTERN = re.compile(r"^[A-Za-z0-9._:-]{8,255}$")
 
 
 def require_user_id(x_user_id: Annotated[str | None, Header(alias="X-User-ID")] = None) -> str:
@@ -18,6 +19,15 @@ def require_user_id(x_user_id: Annotated[str | None, Header(alias="X-User-ID")] 
             detail={"code": "user_identity_required", "message": "A valid X-User-ID header is required"},
         )
     return x_user_id
+
+
+def require_device_id(x_device_id: Annotated[str | None, Header(alias="X-Device-ID")] = None) -> str:
+    if not x_device_id or not DEVICE_ID_PATTERN.fullmatch(x_device_id):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={"code": "device_identity_required", "message": "A valid X-Device-ID header is required"},
+        )
+    return x_device_id
 
 
 def require_device_reset_token(

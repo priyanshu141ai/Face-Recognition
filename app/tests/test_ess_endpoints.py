@@ -30,8 +30,21 @@ def _ess_environment(monkeypatch, tmp_path) -> None:
     monkeypatch.setenv("RECOGNIZER_PROVIDER", "mock")
 
 
-def _headers(user_id: str = "user-001") -> dict[str, str]:
-    return {"Authorization": "Bearer api-secret", "X-User-ID": user_id}
+def _headers(user_id: str = "user-001", device_id: str = "phone-0001") -> dict[str, str]:
+    return {
+        "Authorization": "Bearer api-secret",
+        "X-User-ID": user_id,
+        "X-Device-ID": device_id,
+    }
+
+
+def _register_bound_device(user_id: str = "user-001", device_id: str = "phone-0001") -> None:
+    response = client.post(
+        "/api/ess/device/register",
+        json={"device_id": device_id, "platform": "android"},
+        headers=_headers(user_id, device_id),
+    )
+    assert response.status_code == 201
 
 
 def test_client_management_is_protected_and_validation_is_public() -> None:
@@ -61,6 +74,7 @@ def test_duplicate_client_code_is_rejected() -> None:
 
 
 def test_face_registration_is_encrypted_and_can_be_verified() -> None:
+    _register_bound_device()
     image = _png()
     response = client.post("/api/ess/face/register", json={"image": image}, headers=_headers())
     assert response.status_code == 201
@@ -92,6 +106,16 @@ def test_face_registration_requires_user_identity() -> None:
     )
     assert response.status_code == 401
     assert response.json()["detail"]["code"] == "user_identity_required"
+
+
+def test_face_endpoints_require_the_registered_device() -> None:
+    response = client.get("/api/ess/face/status", headers=_headers())
+    assert response.status_code == 403
+    assert response.json()["detail"]["code"] == "device_not_authorized"
+
+    _register_bound_device()
+    allowed = client.get("/api/ess/face/status", headers=_headers())
+    assert allowed.status_code == 200
 
 
 def test_device_binding_blocks_second_phone_and_other_user() -> None:
@@ -149,3 +173,11 @@ def test_device_reset_needs_recovery_authorization() -> None:
         headers=_headers(),
     )
     assert replacement.status_code == 201
+
+
+def test_ess_openapi_has_typed_responses_and_device_header() -> None:
+    schema = app.openapi()
+    register = schema["paths"]["/api/ess/face/register"]["post"]
+    response_schema = register["responses"]["201"]["content"]["application/json"]["schema"]
+    assert response_schema["$ref"].endswith("/FaceRegisterResponse")
+    assert "X-Device-ID" in {parameter["name"] for parameter in register["parameters"]}

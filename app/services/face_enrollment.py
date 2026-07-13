@@ -4,7 +4,7 @@ import numpy as np
 
 from app.core.errors import FaceQualityError, InvalidImagePayloadError
 from app.schemas.ess import FaceRegisterRequest
-from app.services.pipeline import FaceVerificationPipeline
+from app.services.pipeline import FaceVerificationPipeline, get_face_verification_pipeline
 
 
 @dataclass(frozen=True)
@@ -17,7 +17,14 @@ class ExtractedFace:
 
 
 def extract_face_template(request: FaceRegisterRequest, max_image_mb: float) -> ExtractedFace:
-    pipeline = FaceVerificationPipeline()
+    pipeline = get_face_verification_pipeline()
+    with pipeline.inference_lock:
+        return _extract_face_template(pipeline, request, max_image_mb)
+
+
+def _extract_face_template(
+    pipeline: FaceVerificationPipeline, request: FaceRegisterRequest, max_image_mb: float
+) -> ExtractedFace:
     image_bytes = pipeline.decoder.decode(request.image.data, request.image.kind)
     if len(image_bytes) / (1024 * 1024) > max_image_mb:
         raise InvalidImagePayloadError(f"image exceeds {max_image_mb}MB")

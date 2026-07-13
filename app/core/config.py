@@ -4,10 +4,14 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class Settings:
+    environment: str = "development"
     api_bearer_token: str | None = None
     ess_database_path: str = "data/ess.sqlite3"
     biometric_encryption_key: str | None = None
     device_reset_token: str | None = None
+    cors_allowed_origins: str = "*"
+    enable_api_docs: bool = True
+    client_validation_rate_limit_per_minute: int = 30
     max_image_mb: float = 5.0
     log_level: str = "INFO"
     provider: str = "mock"
@@ -49,11 +53,20 @@ class Settings:
 
     @classmethod
     def from_env(cls) -> "Settings":
+        environment = os.getenv("ENVIRONMENT", "development").strip().lower()
         return cls(
+            environment=environment,
             api_bearer_token=os.getenv("API_BEARER_TOKEN") or None,
             ess_database_path=os.getenv("ESS_DATABASE_PATH", "data/ess.sqlite3"),
             biometric_encryption_key=os.getenv("BIOMETRIC_ENCRYPTION_KEY") or None,
             device_reset_token=os.getenv("DEVICE_RESET_TOKEN") or None,
+            cors_allowed_origins=os.getenv("CORS_ALLOWED_ORIGINS", "*"),
+            enable_api_docs=os.getenv(
+                "ENABLE_API_DOCS", "false" if environment == "production" else "true"
+            ).lower() == "true",
+            client_validation_rate_limit_per_minute=int(
+                os.getenv("CLIENT_VALIDATION_RATE_LIMIT_PER_MINUTE", "30")
+            ),
             max_image_mb=float(os.getenv("MAX_IMAGE_MB", "5.0")),
             log_level=os.getenv("LOG_LEVEL", "INFO"),
             provider=os.getenv("MODEL_PROVIDER", "mock"),
@@ -97,3 +110,28 @@ class Settings:
 
 def get_settings() -> Settings:
     return Settings.from_env()
+
+
+def cors_origins(settings: Settings) -> list[str]:
+    return [origin.strip() for origin in settings.cors_allowed_origins.split(",") if origin.strip()]
+
+
+def validate_deployment_settings(settings: Settings) -> None:
+    if settings.environment != "production":
+        return
+
+    missing = [
+        name
+        for name, value in (
+            ("API_BEARER_TOKEN", settings.api_bearer_token),
+            ("BIOMETRIC_ENCRYPTION_KEY", settings.biometric_encryption_key),
+            ("DEVICE_RESET_TOKEN", settings.device_reset_token),
+        )
+        if not value
+    ]
+    if missing:
+        raise RuntimeError(f"Missing required production settings: {', '.join(missing)}")
+    if settings.detector_provider == "mock" or settings.recognizer_provider == "mock":
+        raise RuntimeError("Mock face providers are not allowed in production")
+    if not cors_origins(settings) or "*" in cors_origins(settings):
+        raise RuntimeError("CORS_ALLOWED_ORIGINS must list explicit origins in production")

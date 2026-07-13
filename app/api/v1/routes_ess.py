@@ -1,17 +1,30 @@
+from dataclasses import dataclass
+
 import numpy as np
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.core.config import get_settings
 from app.core.errors import FaceQualityError, InvalidImagePayloadError
-from app.core.ess_security import require_device_reset_token, require_user_id
+from app.core.ess_security import require_device_id, require_device_reset_token, require_user_id
+from app.core.rate_limit import require_client_validation_rate_limit
 from app.core.security import require_bearer_token
 from app.schemas.ess import (
     ClientCreateRequest,
+    ClientCreateResponse,
+    ClientListResponse,
     ClientValidateRequest,
+    ClientValidateResponse,
+    DeviceRegisterResponse,
     DeviceRegisterRequest,
+    DeviceResetResponse,
     DeviceResetRequest,
+    DeviceStatusResponse,
+    DeviceVerifyResponse,
     DeviceVerifyRequest,
     FaceRegisterRequest,
+    FaceRegisterResponse,
+    FaceStatusResponse,
+    FaceVerifyResponse,
     FaceVerifyRegisteredRequest,
 )
 from app.services.biometric_crypto import (
@@ -37,6 +50,25 @@ def _repository() -> EssRepository:
     return EssRepository(get_settings().ess_database_path)
 
 
+@dataclass(frozen=True)
+class BoundDeviceContext:
+    user_id: str
+    device_id: str
+
+
+def _require_bound_device(
+    user_id: str = Depends(require_user_id),
+    device_id: str = Depends(require_device_id),
+    repository: EssRepository = Depends(_repository),
+) -> BoundDeviceContext:
+    if not repository.verify_device(user_id, device_id):
+        raise HTTPException(
+            status_code=403,
+            detail={"code": "device_not_authorized", "message": "This device is not authorized for the user"},
+        )
+    return BoundDeviceContext(user_id=user_id, device_id=device_id)
+
+
 def _cipher() -> BiometricCipher:
     try:
         return BiometricCipher(get_settings().biometric_encryption_key)
@@ -55,7 +87,7 @@ def _face_error(exc: Exception) -> HTTPException:
     return HTTPException(status_code=500, detail={"code": "face_processing_failed", "message": "Face processing failed"})
 
 
-@router.post("/api/clients", status_code=status.HTTP_201_CREATED)
+@router.post("/api/clients", status_code=status.HTTP_201_CREATED, response_model=ClientCreateResponse)
 def create_client(
     request: ClientCreateRequest,
     _: None = Depends(require_bearer_token),
@@ -67,7 +99,7 @@ def create_client(
         raise HTTPException(status_code=409, detail={"code": "client_code_exists", "message": str(exc)}) from exc
 
 
-@router.get("/api/clients")
+@router.get("/api/clients", response_model=ClientListResponse)
 def list_clients(
     _: None = Depends(require_bearer_token),
     repository: EssRepository = Depends(_repository),
@@ -76,9 +108,10 @@ def list_clients(
     return {"items": clients, "count": len(clients)}
 
 
-@router.post("/api/public/clients/validate")
+@router.post("/api/public/clients/validate", response_model=ClientValidateResponse)
 def validate_client_code(
     request: ClientValidateRequest,
+    _: None = Depends(require_client_validation_rate_limit),
     repository: EssRepository = Depends(_repository),
 ) -> dict[str, object]:
     client = repository.validate_client(request.code)
@@ -87,18 +120,18 @@ def validate_client_code(
     return {"valid": True, "client": client}
 
 
-@router.post("/api/ess/face/register", status_code=status.HTTP_201_CREATED)
+@router.post("/api/ess/face/register", status_code=status.HTTP_201_CREATED, response_model=FaceRegisterResponse)
 def register_face(
     request: FaceRegisterRequest,
     _: None = Depends(require_bearer_token),
-    user_id: str = Depends(require_user_id),
+    context: BoundDeviceContext = Depends(_require_bound_device),
     repository: EssRepository = Depends(_repository),
 ) -> dict[str, object]:
     try:
         extracted = extract_face_template(request, get_settings().max_image_mb)
         encrypted = _cipher().encrypt(extracted.embedding.astype("<f4", copy=False).tobytes())
         registered_at = repository.register_face(
-            user_id=user_id,
+            user_id=context.user_id,
             encrypted_embedding=encrypted,
             embedding_dimension=int(extracted.embedding.size),
             detector=extracted.detector,
@@ -111,19 +144,19 @@ def register_face(
         raise _face_error(exc) from exc
     return {
         "registered": True,
-        "user_id": user_id,
+        "user_id": context.user_id,
         "registered_at": registered_at,
         "model": {"detector": extracted.detector, "recognizer": extracted.recognizer, "preprocessing": extracted.preprocessing},
     }
 
 
-@router.get("/api/ess/face/status")
+@router.get("/api/ess/face/status", response_model=FaceStatusResponse)
 def face_registration_status(
     _: None = Depends(require_bearer_token),
-    user_id: str = Depends(require_user_id),
+    context: BoundDeviceContext = Depends(_require_bound_device),
     repository: EssRepository = Depends(_repository),
 ) -> dict[str, object]:
-    record = repository.get_face(user_id)
+    record = repository.get_face(context.user_id)
     if record is None:
         return {"registered": False, "registered_at": None, "model": None}
     return {
@@ -137,14 +170,14 @@ def face_registration_status(
     }
 
 
-@router.post("/api/ess/face/verify")
+@router.post("/api/ess/face/verify", response_model=FaceVerifyResponse)
 def verify_registered_face(
     request: FaceVerifyRegisteredRequest,
     _: None = Depends(require_bearer_token),
-    user_id: str = Depends(require_user_id),
+    context: BoundDeviceContext = Depends(_require_bound_device),
     repository: EssRepository = Depends(_repository),
 ) -> dict[str, object]:
-    record = repository.get_face(user_id)
+    record = repository.get_face(context.user_id)
     if record is None:
         raise HTTPException(status_code=404, detail={"code": "face_not_registered", "message": "No face is registered for this user"})
     try:
@@ -175,7 +208,7 @@ def verify_registered_face(
     }
 
 
-@router.post("/api/ess/device/register", status_code=status.HTTP_201_CREATED)
+@router.post("/api/ess/device/register", status_code=status.HTTP_201_CREATED, response_model=DeviceRegisterResponse)
 def register_device(
     request: DeviceRegisterRequest,
     _: None = Depends(require_bearer_token),
@@ -191,7 +224,7 @@ def register_device(
     return {"registered": True, **registration}
 
 
-@router.post("/api/ess/device/verify")
+@router.post("/api/ess/device/verify", response_model=DeviceVerifyResponse)
 def verify_device(
     request: DeviceVerifyRequest,
     _: None = Depends(require_bearer_token),
@@ -203,7 +236,7 @@ def verify_device(
     return {"verified": True}
 
 
-@router.get("/api/ess/device/status")
+@router.get("/api/ess/device/status", response_model=DeviceStatusResponse)
 def device_status(
     _: None = Depends(require_bearer_token),
     user_id: str = Depends(require_user_id),
@@ -213,7 +246,7 @@ def device_status(
     return {"registered": registration is not None, "device": registration}
 
 
-@router.post("/api/ess/device/reset")
+@router.post("/api/ess/device/reset", response_model=DeviceResetResponse)
 def reset_device(
     request: DeviceResetRequest | None = None,
     _: None = Depends(require_bearer_token),

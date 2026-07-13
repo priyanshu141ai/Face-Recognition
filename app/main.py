@@ -7,17 +7,27 @@ from app.api.v1.routes_faces import router as faces_router
 from app.api.v1.routes_ess import router as ess_router
 from app.api.v1.routes_health import router as health_router
 from app.api.v1.routes_models import router as models_router
+from app.core.config import cors_origins, get_settings, validate_deployment_settings
 from app.core.errors import FaceQualityError, InvalidImagePayloadError
 from app.core.logging import configure_logging
 
 load_dotenv()
 configure_logging()
+settings = get_settings()
+validate_deployment_settings(settings)
+allowed_origins = cors_origins(settings)
 
-app = FastAPI(title="Face Recognition Backend", version="phase-5")
+app = FastAPI(
+    title="Face Recognition Backend",
+    version="phase-5",
+    docs_url="/docs" if settings.enable_api_docs else None,
+    redoc_url="/redoc" if settings.enable_api_docs else None,
+    openapi_url="/openapi.json" if settings.enable_api_docs else None,
+)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
+    allow_origins=allowed_origins,
+    allow_credentials="*" not in allowed_origins,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -40,7 +50,10 @@ async def invalid_image_handler(_, exc: InvalidImagePayloadError) -> JSONRespons
 
 @app.exception_handler(FileNotFoundError)
 async def missing_model_handler(_, exc: FileNotFoundError) -> JSONResponse:
-    return JSONResponse(status_code=500, content={"error_code": "model_not_found", "message": str(exc)})
+    return JSONResponse(
+        status_code=500,
+        content={"error_code": "model_not_found", "message": "Required model artifact is unavailable"},
+    )
 
 
 @app.get("/")

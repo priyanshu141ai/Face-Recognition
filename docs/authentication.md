@@ -1,143 +1,113 @@
 # API Authentication
 
-Authentication ka matlab hai API ko sirf allowed app/backend use kar sake.
+## Trust Model
 
-Is backend me simple bearer-token auth hai. Env var:
+The Face API uses a shared backend-to-backend bearer token. It does not validate
+mobile-user JWTs directly.
 
-```text
-API_BEARER_TOKEN
-```
-
-## Local Development
-
-Local dev me token empty chhod sakte ho:
-
-```powershell
-$env:API_BEARER_TOKEN=""
-python -m uvicorn app.main:app --reload
-```
-
-Token empty hai to protected endpoints public chalenge. Ye sirf local testing ke liye hai.
-
-## Production / App Integration
-
-Production me token required rakho:
-
-```powershell
-$env:API_BEARER_TOKEN="my-secret-token"
-python -m uvicorn app.main:app --reload
-```
-
-App developer har protected request me ye header bhejega:
+Recommended production flow:
 
 ```text
-Authorization: Bearer my-secret-token
+Mobile App --user JWT--> ESS Backend/Gateway
+ESS Backend --service bearer + trusted identity headers--> Face API
 ```
 
-## Protected Endpoints
+Never place `API_BEARER_TOKEN` or `DEVICE_RESET_TOKEN` in a mobile application.
+
+## Development
+
+Authentication may be disabled only in local development:
+
+```env
+ENVIRONMENT=development
+API_BEARER_TOKEN=
+```
+
+## Production
+
+Production startup fails if required secrets are missing, mock providers are
+active, or wildcard CORS is configured.
+
+```env
+ENVIRONMENT=production
+API_BEARER_TOKEN=<strong-service-secret>
+BIOMETRIC_ENCRYPTION_KEY=<persistent-fernet-key>
+DEVICE_RESET_TOKEN=<admin-recovery-secret>
+CORS_ALLOWED_ORIGINS=https://ess.example.com
+ENABLE_API_DOCS=false
+DETECTOR_PROVIDER=yunet
+RECOGNIZER_PROVIDER=arcface_onnx
+```
+
+## Headers
+
+Protected service endpoint:
+
+```http
+Authorization: Bearer <API_BEARER_TOKEN>
+```
+
+User-scoped ESS endpoint:
+
+```http
+Authorization: Bearer <API_BEARER_TOKEN>
+X-User-ID: <authenticated-user-id>
+```
+
+Face enrollment/status/verification additionally requires:
+
+```http
+X-Device-ID: <registered-device-id>
+```
+
+Device reset additionally requires:
+
+```http
+X-Device-Reset-Token: <DEVICE_RESET_TOKEN>
+```
+
+## Endpoint Groups
+
+Public:
+
+```text
+GET  /
+GET  /healthz
+GET  /readyz
+POST /api/public/clients/validate
+```
+
+Service protected:
 
 ```text
 GET  /v1/models/current
 POST /v1/faces/detect
 POST /v1/faces/embed
 POST /v1/faces/verify
+GET  /api/clients
+POST /api/clients
 ```
 
-## Public Endpoints
+User and device protected:
 
 ```text
-GET /healthz
-GET /readyz
+POST /api/ess/device/register
+POST /api/ess/device/verify
+GET  /api/ess/device/status
+POST /api/ess/device/reset
+GET  /api/ess/face/status
+POST /api/ess/face/register
+POST /api/ess/face/verify
 ```
 
-`/readyz` public rakha gaya hai local/container health checks ke liye. Isme secret token ya embeddings expose nahi hote.
+The low-level `/v1/faces/*` routes are for trusted backend/service use. Mobile
+clients should use the ESS gateway workflow.
 
-## curl Tests
+## Operational Requirements
 
-Without token:
-
-```powershell
-curl http://127.0.0.1:8000/v1/models/current
-```
-
-Expected when token is enabled:
-
-```text
-401 Unauthorized
-```
-
-Wrong token:
-
-```powershell
-curl -H "Authorization: Bearer wrong-token" http://127.0.0.1:8000/v1/models/current
-```
-
-Correct token:
-
-```powershell
-curl -H "Authorization: Bearer my-secret-token" http://127.0.0.1:8000/v1/models/current
-```
-
-Expected:
-
-```text
-200 OK
-```
-
-## Python Requests Example
-
-```python
-import requests
-
-headers = {"Authorization": "Bearer my-secret-token"}
-response = requests.get("http://127.0.0.1:8000/v1/models/current", headers=headers)
-print(response.status_code, response.json())
-```
-
-## Auth Test Script
-
-```powershell
-python scripts\test_authentication.py --base-url http://127.0.0.1:8000 --token my-secret-token
-```
-
-Expected output:
-
-```text
-healthz public                  PASS  200  ok
-models/current no token         PASS  401  protected
-models/current wrong token      PASS  401  protected
-models/current correct token    PASS  200  authorized
-faces/verify no token           PASS  401  protected
-faces/verify correct token      PASS  200/422 authorized path reached
-```
-
-## Common Errors
-
-```text
-401 Missing Authorization header
-```
-
-Header missing hai ya token enabled hai.
-
-```text
-401 Invalid token
-```
-
-Token wrong hai.
-
-```text
-Token set nahi hai, API public chal rahi hai
-```
-
-`API_BEARER_TOKEN` empty hai. Production me ye unsafe hai.
-
-## Production Warning
-
-Bearer token initial backend-to-app integration ke liye okay hai. Production hardening later add karo:
-
-- HTTPS
-- JWT/user authentication if needed
-- API gateway
-- rate limiting
-- token rotation
-- IP/domain restrictions if applicable
+- Rotate service and reset tokens through a controlled secret-management process.
+- Back up the biometric encryption key; losing it makes stored templates unreadable.
+- Keep Face API network access restricted to the ESS gateway where possible.
+- Use HTTPS only.
+- Rate-limit public endpoints at both the application and edge/gateway layers.
+- Audit device resets, enrollment, verification, and attendance decisions in the ESS backend.

@@ -1,6 +1,7 @@
+from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.schemas.common import ImagePayload, QualityPolicy
 from app.schemas.face import FaceSelector
@@ -53,3 +54,87 @@ class DeviceVerifyRequest(BaseModel):
 
 class DeviceResetRequest(BaseModel):
     reason: str | None = Field(default=None, max_length=500)
+
+
+class ClientSummary(BaseModel):
+    id: str
+    code: str
+    name: str
+
+
+class ClientRecord(ClientSummary):
+    active: bool
+    created_at: datetime
+    updated_at: datetime | None = None
+
+
+class ClientCreateResponse(ClientRecord):
+    pass
+
+
+class ClientListResponse(BaseModel):
+    items: list[ClientRecord]
+    count: int
+
+
+class ClientValidateResponse(BaseModel):
+    valid: bool
+    client: ClientSummary | None
+
+
+class FaceModelInfo(BaseModel):
+    detector: str
+    recognizer: str
+    preprocessing: str
+
+
+class FaceRegisterResponse(BaseModel):
+    model_config = ConfigDict(protected_namespaces=())
+
+    registered: bool
+    user_id: str
+    registered_at: datetime
+    model: FaceModelInfo
+
+
+class FaceStatusResponse(BaseModel):
+    model_config = ConfigDict(protected_namespaces=())
+
+    registered: bool
+    registered_at: datetime | None
+    model: FaceModelInfo | None
+
+
+class FaceVerifyResponse(BaseModel):
+    verified: bool
+    decision: Literal["match", "non_match"]
+    similarity_cosine: float
+    threshold: float
+
+
+class DeviceRegisterResponse(BaseModel):
+    registered: bool
+    device_id: str
+    platform: Literal["android", "ios", "web", "other"]
+    registered_at: datetime
+    already_registered: bool
+
+
+class DeviceVerifyResponse(BaseModel):
+    verified: bool
+
+
+class DeviceInfo(BaseModel):
+    device_id: str
+    platform: Literal["android", "ios", "web", "other"]
+    registered_at: datetime
+    last_verified_at: datetime | None
+
+
+class DeviceStatusResponse(BaseModel):
+    registered: bool
+    device: DeviceInfo | None
+
+
+class DeviceResetResponse(BaseModel):
+    reset: bool
