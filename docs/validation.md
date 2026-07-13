@@ -1,7 +1,7 @@
 # Face Recognition Backend Validation Guide
 
 ## Purpose
-This guide explains how to verify the backend after Phase 4.1. The validation layer checks project structure, dependencies, model files, API behavior, benchmark readiness, logging safety, Docker readiness, and tests.
+This guide explains how to verify the current backend. The validation layer checks project structure, dependencies, model files, API behavior, benchmark readiness, logging safety, Docker readiness, and tests.
 
 ## What the validation checks
 - Project structure and required files

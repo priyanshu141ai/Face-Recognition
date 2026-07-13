@@ -20,6 +20,9 @@ REQUIRED_PROJECT_PATHS = [
     "app/api/v1/routes_health.py",
     "app/api/v1/routes_models.py",
     "app/services/pipeline.py",
+    "app/services/device_proof.py",
+    "app/services/liveness/base.py",
+    "app/persistence/schema.py",
     "app/services/matcher.py",
     "app/services/alignment.py",
     "app/models/yunet_detector.py",
@@ -34,6 +37,9 @@ REQUIRED_PROJECT_PATHS = [
     "benchmark_reports/.gitkeep",
     "requirements.txt",
     "Dockerfile",
+    "alembic.ini",
+    "migrations/versions/0001_legacy_schema.py",
+    "migrations/versions/0002_production_security.py",
     "README.md",
 ]
 
@@ -107,6 +113,7 @@ def check_python_dependencies(root: str | Path = PROJECT_ROOT) -> ValidationResu
         "python-dotenv": "dotenv",
         "scikit-learn": "sklearn",
         "uvicorn[standard]": "uvicorn",
+        "pyjwt": "jwt",
     }
     missing: list[str] = []
     req = root / "requirements.txt"
@@ -117,6 +124,7 @@ def check_python_dependencies(root: str | Path = PROJECT_ROOT) -> ValidationResu
         if not raw or raw.startswith("#"):
             continue
         package = re.split(r"[=<>!~]", raw, maxsplit=1)[0].strip().lower()
+        package = package.split("[", 1)[0]
         module = package_map.get(package, package.replace("-", "_"))
         if importlib.util.find_spec(module) is None:
             missing.append(package)

@@ -1,5 +1,9 @@
 # API Contract
 
+For the current app-facing ESS contract, use
+[`app_api_contract_latest.md`](app_api_contract_latest.md). This file remains a
+compact engine/endpoint overview.
+
 This file is the main contract reference for the frontend and mobile client. Keep it updated whenever request or response fields change.
 
 ## Health endpoints
@@ -43,9 +47,9 @@ This file is the main contract reference for the frontend and mobile client. Kee
 
 ## ESS integration endpoints
 
-Protected endpoints use the configured bearer token. User-scoped endpoints also
-require `X-User-ID`, which must be set by a trusted authenticated gateway and not
-accepted directly from an untrusted client.
+Protected endpoints use the service bearer plus a short-lived ES256 gateway
+assertion. Signed user/device claims are authoritative; compatibility identity
+headers, when enabled outside production, must match those claims.
 
 ### Client codes
 
@@ -58,14 +62,17 @@ accepted directly from an untrusted client.
 
 ### Face enrollment
 
-- `POST /api/ess/face/register` registers exactly one encrypted face template per user.
-- `GET /api/ess/face/status` reports whether the authenticated user is enrolled.
+- `POST /api/ess/face/register` requires exactly one `front`, slight-`left`, and
+  slight-`right` capture and stores one encrypted fused template per user.
+- `GET /api/ess/face/status` returns `registered`, lifecycle `status`,
+  `capture_count`, `captured_angles`, `template_version`, and safe model metadata.
 - `POST /api/ess/face/verify` compares a live image with the enrolled template.
 - Registration returns `409 face_already_registered` instead of silently replacing a biometric template.
 - `BIOMETRIC_ENCRYPTION_KEY` must be configured with a Fernet key. Embeddings are never returned by these endpoints.
 
-The register and verify request body uses the same `image`, `face_selector`,
-`face_index`, and `quality_policy` fields as the face embedding endpoint.
+Registration uses `enrollment_images`; verification remains a single live
+`image`/liveness session. Enrollment captures never substitute for liveness
+frames. Fusion is normalize-each, arithmetic mean, then normalize-final.
 
 ### One-user-one-device binding
 

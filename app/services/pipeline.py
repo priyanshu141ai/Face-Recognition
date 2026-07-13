@@ -26,7 +26,7 @@ class FaceVerificationPipeline:
         self.settings = settings or get_settings()
         self.logger = get_logger("pipeline")
         self.inference_lock = threading.RLock()
-        self.decoder = ImageDecoder()
+        self.decoder = ImageDecoder(self.settings.max_image_pixels)
         self.preprocessor = Preprocessor()
         self.detector = None
         self.recognizer = None
@@ -186,7 +186,9 @@ class FaceVerificationPipeline:
 
     def _decode_and_validate(self, payload: Any, max_image_mb: float, timings: dict[str, float]) -> bytes:
         decode_start = time.perf_counter()
-        decoded = self.decoder.decode(payload.data, payload.kind)
+        decoded = self.decoder.decode(
+            payload.data, payload.kind, int(max_image_mb * 1024 * 1024)
+        )
         timings["decode"] += round((time.perf_counter() - decode_start) * 1000.0, 2)
         size_mb = len(decoded) / (1024 * 1024)
         if size_mb > max_image_mb:

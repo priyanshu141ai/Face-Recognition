@@ -20,6 +20,10 @@ def _png(color: tuple[int, int, int] = (20, 40, 60)) -> dict[str, str]:
     return {"kind": "base64_png", "data": base64.b64encode(buffer.getvalue()).decode("ascii")}
 
 
+def _enrollment(image: dict[str, str]) -> dict[str, object]:
+    return {"enrollment_images": [{"angle": angle, "image": image} for angle in ("front", "left", "right")]}
+
+
 @pytest.fixture(autouse=True)
 def _ess_environment(monkeypatch, tmp_path) -> None:
     monkeypatch.setenv("API_BEARER_TOKEN", "api-secret")
@@ -28,6 +32,13 @@ def _ess_environment(monkeypatch, tmp_path) -> None:
     monkeypatch.setenv("DEVICE_RESET_TOKEN", "reset-secret")
     monkeypatch.setenv("DETECTOR_PROVIDER", "mock")
     monkeypatch.setenv("RECOGNIZER_PROVIDER", "mock")
+    monkeypatch.setenv("ALLOW_LEGACY_DEVICE_ID_ONLY", "true")
+    monkeypatch.setenv("DEVICE_PROOF_REQUIRED", "false")
+    monkeypatch.setenv("ALLOW_LEGACY_SINGLE_IMAGE_VERIFICATION", "true")
+    monkeypatch.setenv("DEVICE_REGISTER_LIMIT_PER_HOUR", "1000")
+    monkeypatch.setenv("DEVICE_VERIFY_LIMIT_PER_MINUTE", "1000")
+    monkeypatch.setenv("FACE_VERIFY_LIMIT_PER_MINUTE", "1000")
+    monkeypatch.setenv("FACE_REGISTER_LIMIT_PER_HOUR", "1000")
 
 
 def _headers(user_id: str = "user-001", device_id: str = "phone-0001") -> dict[str, str]:
@@ -76,7 +87,7 @@ def test_duplicate_client_code_is_rejected() -> None:
 def test_face_registration_is_encrypted_and_can_be_verified() -> None:
     _register_bound_device()
     image = _png()
-    response = client.post("/api/ess/face/register", json={"image": image}, headers=_headers())
+    response = client.post("/api/ess/face/register", json=_enrollment(image), headers=_headers())
     assert response.status_code == 201
     assert response.json()["registered"] is True
 
@@ -93,7 +104,7 @@ def test_face_registration_is_encrypted_and_can_be_verified() -> None:
         encrypted = connection.execute("SELECT encrypted_embedding FROM face_registrations").fetchone()[0]
     assert encrypted.startswith(b"gAAAA")
 
-    duplicate = client.post("/api/ess/face/register", json={"image": image}, headers=_headers())
+    duplicate = client.post("/api/ess/face/register", json=_enrollment(image), headers=_headers())
     assert duplicate.status_code == 409
     assert duplicate.json()["detail"]["code"] == "face_already_registered"
 
@@ -101,7 +112,7 @@ def test_face_registration_is_encrypted_and_can_be_verified() -> None:
 def test_face_registration_requires_user_identity() -> None:
     response = client.post(
         "/api/ess/face/register",
-        json={"image": _png()},
+        json=_enrollment(_png()),
         headers={"Authorization": "Bearer api-secret"},
     )
     assert response.status_code == 401

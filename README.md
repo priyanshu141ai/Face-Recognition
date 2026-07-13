@@ -2,10 +2,25 @@
 
 [![Python](https://img.shields.io/badge/Python-3.11-blue)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115.0-009688)](https://fastapi.tiangolo.com/)
-[![License](https://img.shields.io/badge/License-MIT-green)](https://opensource.org/licenses/MIT)
 
 ## Purpose
-This repository is a Phase 4.1 face verification backend. It has FastAPI APIs, YuNet detection, ArcFace ONNX recognition, benchmark tooling, and local model artifact validation.
+This repository is a Phase 5 face verification backend with ESS enrollment/device flows and production-security foundations. It has FastAPI APIs, YuNet detection, ArcFace ONNX recognition, benchmark tooling, cryptographic device proof, replay-resistant liveness challenges, abuse controls, and PostgreSQL-ready persistence.
+
+## Current status
+
+| Feature | Status |
+| --- | --- |
+| Face detection | Working |
+| Face recognition | Working |
+| Encrypted enrollment | Working |
+| Gateway trust | Bearer + ES256 request assertions implemented; ESS integration required |
+| Cryptographic device proof | Working; mobile/gateway integration required |
+| Replay protection | Working for server challenges and short-window frame reuse |
+| Liveness provider | Adapter implemented; validated production provider not configured |
+| Rate limiting | Working; Redis required for multiple replicas |
+| PostgreSQL support | Working via SQLAlchemy/Alembic; external integration test requires service |
+| Production calibration | Framework working; deployment approval not present |
+| Production readiness | **Not ready** until real liveness and representative approval/deployment controls exist |
 
 ## What this project does
 The backend accepts two face images, validates them, runs a detector and embedding flow, and returns a verification decision with timing and model version metadata.
@@ -30,11 +45,13 @@ app/
   api/v1/                 # Routes for health, faces, and models
   core/                   # Config, logging, errors, security
   schemas/                # Pydantic request/response models
-  services/               # Decoder, alignment, matcher, calibration, pipeline
+  services/               # Pipeline, liveness, device proof, rate limits, repositories
+  persistence/            # SQLAlchemy schema and database engine
   models/                 # Mock, YuNet, ArcFace, MobileFaceNet, optional buffalo_l adapters
   tests/                  # API and unit tests
-models/                  # Future model assets directory
-scripts/                 # Placeholder model download scripts
+models/                  # Local ignored model assets
+scripts/                 # Validation, migrations, benchmark, and operational tools
+migrations/              # Alembic revisions
 docs/                    # API contract, phase plan, contributor workflow
 ```
 
@@ -47,16 +64,9 @@ docs/                    # API contract, phase plan, contributor workflow
 - Config and env vars: [app/core/config.py](app/core/config.py)
 - Tests: [app/tests](app/tests)
 
-## Phase 4 status
-- Phase 3 ArcFace ONNX recognizer remains the default production recognizer
-- Benchmark framework added for controlled model comparison
-- ArcFace, MobileFaceNet, and optional InsightFace buffalo_l can be benchmarked against the same pipeline
+## Security integration
 
-## Phase 4.1 status
-- Model artifact validation script added
-- Benchmark readiness checker added
-- Sample pairs.csv generator added
-- Benchmark reports include dataset warning and model metadata
+Mobile clients must use the ESS gateway and a non-exportable P-256 key. Protected staging/production calls require bearer plus a signed request-bound gateway assertion. Start with [gateway signed claims](docs/gateway_signed_claims.md), [secure mobile integration](docs/secure_mobile_integration.md), and [production security](docs/production_security.md).
 
 ## Before running real inference
 Place local model weights in the models directory before running real inference or benchmark jobs.
@@ -141,7 +151,9 @@ pytest -q
 
 ## API Authentication
 
-Protected endpoints use `API_BEARER_TOKEN`.
+Protected endpoints use `API_BEARER_TOKEN`; hardened staging/production also
+requires the request-bound ES256 gateway assertion documented in
+`docs/app_api_contract_latest.md`.
 
 Local dev can leave it empty. For app/backend integration, set it:
 
@@ -217,7 +229,7 @@ python scripts/compare_models.py --reports benchmark_reports
 ## Run with Docker
 ```bash
 docker build -t face-recognition-backend .
-docker run -p 8000:8000 face-recognition-backend
+docker run -p 8000:8080 face-recognition-backend
 ```
 
 ## Contributor workflow
@@ -227,6 +239,9 @@ docker run -p 8000:8000 face-recognition-backend
 - Keep mock implementations isolated so they can be replaced later
 - Add or update tests when changing behavior
 
-## Next phases
-- Phase 5: calibrate thresholds with validation data
-- Phase 6: add production security, monitoring, and deployment automation
+## Production work still required
+
+- Connect and independently validate a real liveness/anti-spoof provider.
+- Complete representative, consented deployment calibration and risk-owner approval.
+- Deploy PostgreSQL/Redis, migrations, backups, monitoring, gateway isolation, and restore/rollback drills.
+- Resolve model/license provenance and add the appropriate repository license.
