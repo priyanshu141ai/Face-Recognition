@@ -145,3 +145,14 @@ no_face_detected
 ```
 
 Real detector image me face detect nahi kar pa raha. Clear, front-facing face image use karo.
+
+
+
+cd "C:\projects\Face Recognition\face-recognition-backend"
+. ..\.venv\Scripts\Activate.ps1
+python -m pip install -r requirements.txt
+.\scripts\start_real_mode.ps1
+
+python scripts\check_active_model_mode.py --expected real
+
+python scripts\manual_test_compare_images.py "test_images\test_1.png" "test_images\test_2.png"
