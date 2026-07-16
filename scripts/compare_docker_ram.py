@@ -115,7 +115,7 @@ def _docker_stats(container: str) -> dict[str, float]:
 
 
 class CgroupSampler:
-    """Sample the same cgroup counters that back Docker container stats."""
+    """Sample Docker-style cgroup working set and CPU counters."""
 
     def __init__(self, container: str) -> None:
         self.container = container
@@ -130,7 +130,10 @@ class CgroupSampler:
             "import pathlib,time\n"
             "stop=pathlib.Path('/tmp/docker_ram_sampler_stop')\n"
             "while not stop.exists():\n"
-            " m=int(pathlib.Path('/sys/fs/cgroup/memory.current').read_text())\n"
+            " current=int(pathlib.Path('/sys/fs/cgroup/memory.current').read_text())\n"
+            " memstat={line.split()[0]:int(line.split()[1]) for line in "
+            "pathlib.Path('/sys/fs/cgroup/memory.stat').read_text().splitlines()}\n"
+            " m=max(0,current-memstat.get('inactive_file',0))\n"
             " cpu={line.split()[0]:int(line.split()[1]) for line in "
             "pathlib.Path('/sys/fs/cgroup/cpu.stat').read_text().splitlines()}['usage_usec']\n"
             " print(f'{time.time_ns()}|{m}|{cpu}',flush=True)\n"
