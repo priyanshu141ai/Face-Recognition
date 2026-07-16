@@ -11,6 +11,7 @@ from PIL import Image
 from PIL.PngImagePlugin import PngInfo
 
 from app.main import app
+from app.schemas.ess import FaceRegisterRequest
 from app.core.errors import InvalidImagePayloadError
 from app.models.mock_detector import MockFaceDetector
 from app.models.mock_recognizer import MockFaceRecognizer
@@ -18,6 +19,7 @@ from app.services.biometric_crypto import BiometricCipher
 from app.services.ess_repository import EssRepository
 from app.services.image_decoder import ImageDecoder
 from app.services.rate_limit.factory import _cached
+import app.services.face_enrollment as face_enrollment
 
 
 client = TestClient(app)
@@ -164,19 +166,41 @@ def test_inconsistent_identity_is_rejected(monkeypatch) -> None:
     assert response.json()["detail"]["code"] == "enrollment_identity_mismatch"
 
 
-def test_malformed_angle_is_rejected_before_model_processing(monkeypatch) -> None:
-    monkeypatch.setattr(MockFaceDetector, "detect", lambda *_args, **_kwargs: pytest.fail("detector called"))
+def test_malformed_angle_stops_sequential_processing(monkeypatch) -> None:
+    original = MockFaceDetector.detect
+    calls = 0
+
+    def detect(self, image, quality_policy=None):
+        nonlocal calls
+        calls += 1
+        return original(self, image, quality_policy)
+
+    monkeypatch.setattr(MockFaceDetector, "detect", detect)
     payload = _payload()
     payload["enrollment_images"][1]["image"] = {"kind": "base64_png", "data": "invalid-data"}
     response = client.post("/api/ess/face/register", json=payload, headers=HEADERS)
     assert response.status_code == 415
     assert "left enrollment capture" in response.json()["detail"]["message"].lower()
+    assert calls == 1
 
 
-@pytest.mark.parametrize("oversized_angles", [("left",), ("front", "left", "right")])
-def test_oversized_captures_are_rejected_before_model_processing(monkeypatch, oversized_angles) -> None:
+@pytest.mark.parametrize(
+    ("oversized_angles", "expected_detector_calls"),
+    [(('left',), 1), (("front", "left", "right"), 0)],
+)
+def test_oversized_captures_stop_sequential_processing(
+    monkeypatch, oversized_angles, expected_detector_calls
+) -> None:
     monkeypatch.setenv("MAX_IMAGE_MB", "0.002")
-    monkeypatch.setattr(MockFaceDetector, "detect", lambda *_args, **_kwargs: pytest.fail("detector called"))
+    original = MockFaceDetector.detect
+    calls = 0
+
+    def detect(self, image, quality_policy=None):
+        nonlocal calls
+        calls += 1
+        return original(self, image, quality_policy)
+
+    monkeypatch.setattr(MockFaceDetector, "detect", detect)
     payload = _payload()
     for capture in payload["enrollment_images"]:
         if capture["angle"] in oversized_angles:
@@ -184,6 +208,58 @@ def test_oversized_captures_are_rejected_before_model_processing(monkeypatch, ov
     response = client.post("/api/ess/face/register", json=payload, headers=HEADERS)
     assert response.status_code == 415
     assert response.json()["detail"]["code"] == "invalid_image_payload"
+    assert calls == expected_detector_calls
+
+
+def test_three_angle_images_are_decoded_and_embedded_sequentially(monkeypatch) -> None:
+    events = []
+
+    def decode(_pipeline, _image, _max_image_mb, label):
+        angle = label.split()[0]
+        events.append(("decode", angle))
+        return angle.encode("ascii")
+
+    def extract(_pipeline, _image_bytes, _policy, _selector, _index, label):
+        angle = label.split()[0]
+        events.append(("embed", angle))
+        return np.ones(3, dtype=np.float32) / np.sqrt(3.0)
+
+    monkeypatch.setattr(face_enrollment, "_decode_image", decode)
+    monkeypatch.setattr(face_enrollment, "_extract_embedding", extract)
+    request = FaceRegisterRequest.model_validate(_payload())
+    face_enrollment.extract_fused_face_template(request, 5.0)
+    assert events == [
+        ("decode", "front"),
+        ("embed", "front"),
+        ("decode", "left"),
+        ("embed", "left"),
+        ("decode", "right"),
+        ("embed", "right"),
+    ]
+
+
+def test_three_angle_fusion_output_is_unchanged(monkeypatch) -> None:
+    embeddings = iter(
+        [
+            np.array([1.0, 0.0, 0.0], dtype=np.float32),
+            np.array([0.98, 0.2, 0.0], dtype=np.float32),
+            np.array([0.98, -0.2, 0.0], dtype=np.float32),
+        ]
+    )
+    monkeypatch.setattr(face_enrollment, "_decode_image", lambda *_args: b"image")
+    monkeypatch.setattr(face_enrollment, "_extract_embedding", lambda *_args: next(embeddings))
+    request = FaceRegisterRequest.model_validate(_payload())
+    result = face_enrollment.extract_fused_face_template(request, 5.0)
+    source = np.stack(
+        [
+            np.array([1.0, 0.0, 0.0], dtype=np.float32),
+            np.array([0.98, 0.2, 0.0], dtype=np.float32),
+            np.array([0.98, -0.2, 0.0], dtype=np.float32),
+        ]
+    )
+    expected = np.mean(source, axis=0, dtype=np.float32)
+    expected /= np.linalg.norm(expected)
+    assert result.embedding == pytest.approx(expected, abs=1e-7)
 
 
 def test_decompression_style_pixel_dimensions_are_rejected() -> None:

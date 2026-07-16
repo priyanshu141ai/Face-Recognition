@@ -1,7 +1,8 @@
 import time
 import threading
+from contextlib import contextmanager
 from functools import lru_cache
-from typing import Any
+from typing import Any, Iterator
 
 import numpy as np
 
@@ -24,8 +25,13 @@ from app.services.preprocessing import Preprocessor
 class FaceVerificationPipeline:
     def __init__(self, settings: Settings | None = None) -> None:
         self.settings = settings or get_settings()
+        if self.settings.face_inference_concurrency < 1:
+            raise ValueError("FACE_INFERENCE_CONCURRENCY must be at least 1")
         self.logger = get_logger("pipeline")
-        self.inference_lock = threading.RLock()
+        self._initialization_lock = threading.RLock()
+        self.inference_semaphore = threading.BoundedSemaphore(
+            self.settings.face_inference_concurrency
+        )
         self.decoder = ImageDecoder(self.settings.max_image_pixels)
         self.preprocessor = Preprocessor()
         self.detector = None
@@ -34,8 +40,16 @@ class FaceVerificationPipeline:
         self.matcher = FaceMatcher(threshold=threshold)
 
     def verify(self, request: VerifyRequest, max_image_mb: float) -> dict[str, Any]:
-        with self.inference_lock:
+        with self.inference_slot():
             return self._verify_unlocked(request, max_image_mb)
+
+    @contextmanager
+    def inference_slot(self) -> Iterator[None]:
+        self.inference_semaphore.acquire()
+        try:
+            yield
+        finally:
+            self.inference_semaphore.release()
 
     def _verify_unlocked(self, request: VerifyRequest, max_image_mb: float) -> dict[str, Any]:
         timings = {"decode": 0.0, "detect": 0.0, "align": 0.0, "embed": 0.0, "match": 0.0, "total": 0.0}
@@ -126,35 +140,39 @@ class FaceVerificationPipeline:
 
     def ensure_ready(self) -> dict[str, str]:
         """Load and validate configured providers once, then reuse them across requests."""
-        with self.inference_lock:
+        with self._initialization_lock:
             self._get_detector()
             self._get_recognizer()
             return {"detector": self._detector_name(), "recognizer": self._recognizer_name()}
 
     def _get_detector(self):
         if self.detector is None:
-            provider = self.settings.detector_provider
-            if provider == "yunet":
-                self.detector = YuNetFaceDetector()
-            elif provider == "mock":
-                self.detector = MockFaceDetector()
-            else:
-                raise DetectorProviderError("detector provider is invalid")
+            with self._initialization_lock:
+                if self.detector is None:
+                    provider = self.settings.detector_provider
+                    if provider == "yunet":
+                        self.detector = YuNetFaceDetector(self.settings)
+                    elif provider == "mock":
+                        self.detector = MockFaceDetector()
+                    else:
+                        raise DetectorProviderError("detector provider is invalid")
         return self.detector
 
     def _get_recognizer(self):
         if self.recognizer is None:
-            provider = self.settings.recognizer_provider
-            if provider == "mock":
-                self.recognizer = MockFaceRecognizer()
-            elif provider == "arcface_onnx":
-                self.recognizer = ArcFaceOnnxRecognizer()
-            elif provider == "mobilefacenet_onnx":
-                self.recognizer = MobileFaceNetOnnxRecognizer()
-            elif provider == "insightface_buffalo_l":
-                self.recognizer = InsightFaceBuffaloRecognizer()
-            else:
-                raise RecognizerProviderError("recognizer provider is invalid")
+            with self._initialization_lock:
+                if self.recognizer is None:
+                    provider = self.settings.recognizer_provider
+                    if provider == "mock":
+                        self.recognizer = MockFaceRecognizer()
+                    elif provider == "arcface_onnx":
+                        self.recognizer = ArcFaceOnnxRecognizer(self.settings)
+                    elif provider == "mobilefacenet_onnx":
+                        self.recognizer = MobileFaceNetOnnxRecognizer()
+                    elif provider == "insightface_buffalo_l":
+                        self.recognizer = InsightFaceBuffaloRecognizer()
+                    else:
+                        raise RecognizerProviderError("recognizer provider is invalid")
         return self.recognizer
 
     def _select_faces(self, detections: list[FaceDetectionSchema], selector: str, face_index: int | None = None) -> list[FaceDetectionSchema]:
@@ -209,7 +227,7 @@ class FaceVerificationPipeline:
             raise FaceQualityError("face_quality_rejected", f"face quality rejected for {which}")
 
 
-@lru_cache(maxsize=8)
+@lru_cache(maxsize=1)
 def _pipeline_for_settings(settings: Settings) -> FaceVerificationPipeline:
     return FaceVerificationPipeline(settings)
 

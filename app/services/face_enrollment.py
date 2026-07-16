@@ -31,7 +31,7 @@ class FusedEnrollmentTemplate(ExtractedFace):
 
 def extract_face_template(request: FaceVerifyRegisteredRequest, max_image_mb: float) -> ExtractedFace:
     pipeline = get_face_verification_pipeline()
-    with pipeline.inference_lock:
+    with pipeline.inference_slot():
         if request.image is None:
             raise InvalidImagePayloadError("image payload is required")
         image_bytes = _decode_image(
@@ -56,25 +56,22 @@ def extract_fused_face_template(
 ) -> FusedEnrollmentTemplate:
     pipeline = get_face_verification_pipeline()
     captures = {capture.angle: capture for capture in request.enrollment_images}
-    with pipeline.inference_lock:
-        decoded = {
-            angle: _decode_image(
+    with pipeline.inference_slot():
+        embeddings = []
+        for angle in THREE_ANGLE_ORDER:
+            image_bytes = _decode_image(
                 pipeline, captures[angle].image, max_image_mb,
                 f"{angle.value} enrollment capture",
             )
-            for angle in THREE_ANGLE_ORDER
-        }
-        embeddings = [
-            _extract_embedding(
+            embeddings.append(_extract_embedding(
                 pipeline,
-                decoded[angle],
+                image_bytes,
                 request.quality_policy,
                 request.face_selector,
                 request.face_index,
                 f"{angle.value} enrollment capture",
-            )
-            for angle in THREE_ANGLE_ORDER
-        ]
+            ))
+            del image_bytes
         threshold = pipeline.matcher.threshold
         if any(
             pipeline.matcher.cosine_similarity(embeddings[left], embeddings[right]) < threshold

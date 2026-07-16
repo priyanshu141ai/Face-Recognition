@@ -4,7 +4,7 @@ from typing import Any
 
 import numpy as np
 
-from app.core.config import get_settings
+from app.core.config import Settings, get_settings
 from app.core.errors import ArcFaceInferenceError, ArcFaceModelNotFoundError, InvalidEmbeddingShapeError
 from app.services.recognizer_base import BaseFaceRecognizer
 
@@ -15,8 +15,8 @@ except ImportError:  # pragma: no cover
 
 
 class ArcFaceOnnxRecognizer(BaseFaceRecognizer):
-    def __init__(self) -> None:
-        self.settings = get_settings()
+    def __init__(self, settings: Settings | None = None) -> None:
+        self.settings = settings or get_settings()
         self.session = None
         self.input_name = None
         self.output_name = None
@@ -37,7 +37,14 @@ class ArcFaceOnnxRecognizer(BaseFaceRecognizer):
             raise ArcFaceInferenceError("pinned ArcFace model requires raw_rgb_0_255 preprocessing")
         self.sha256 = digest
 
-        self.session = ort.InferenceSession(self.settings.arcface_model_path, providers=self.providers)
+        session_options = ort.SessionOptions()
+        session_options.intra_op_num_threads = self.settings.ort_intra_op_threads
+        session_options.inter_op_num_threads = self.settings.ort_inter_op_threads
+        self.session = ort.InferenceSession(
+            self.settings.arcface_model_path,
+            sess_options=session_options,
+            providers=self.providers,
+        )
         self.input_name = self.session.get_inputs()[0].name
         self.output_name = self.session.get_outputs()[0].name
 

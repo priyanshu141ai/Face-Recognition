@@ -55,6 +55,9 @@ class Settings:
     arcface_normalization: str = "raw_rgb_0_255"
     arcface_use_gpu: bool = False
     onnx_providers: str = "CPUExecutionProvider"
+    face_inference_concurrency: int = 2
+    ort_intra_op_threads: int = 2
+    ort_inter_op_threads: int = 1
     match_threshold: float = 0.40
     match_threshold_override: bool = False
     calibration_dir: str = "calibration"
@@ -117,6 +120,16 @@ class Settings:
     def from_env(cls) -> "Settings":
         environment = os.getenv("ENVIRONMENT", "development").strip().lower()
         optional_float = lambda name: float(os.environ[name]) if os.getenv(name) else None
+
+        def positive_int(name: str, default: int) -> int:
+            try:
+                value = int(os.getenv(name, str(default)))
+            except ValueError as exc:
+                raise RuntimeError(f"{name} must be an integer") from exc
+            if value < 1:
+                raise RuntimeError(f"{name} must be at least 1")
+            return value
+
         return cls(
             environment=environment,
             api_bearer_token=os.getenv("API_BEARER_TOKEN") or None,
@@ -177,6 +190,9 @@ class Settings:
             arcface_normalization=os.getenv("ARCFACE_NORMALIZATION", "raw_rgb_0_255"),
             arcface_use_gpu=os.getenv("ARCFACE_USE_GPU", "false").lower() == "true",
             onnx_providers=os.getenv("ONNX_PROVIDERS", "CPUExecutionProvider"),
+            face_inference_concurrency=positive_int("FACE_INFERENCE_CONCURRENCY", 2),
+            ort_intra_op_threads=positive_int("ORT_INTRA_OP_THREADS", 2),
+            ort_inter_op_threads=positive_int("ORT_INTER_OP_THREADS", 1),
             match_threshold=float(os.getenv("MATCH_THRESHOLD", "0.40")),
             match_threshold_override=os.getenv("MATCH_THRESHOLD") is not None,
             calibration_dir=os.getenv("CALIBRATION_DIR", "calibration"),
@@ -344,6 +360,12 @@ def _validate_staging_settings(settings: Settings) -> None:
 
 
 def validate_deployment_settings(settings: Settings) -> None:
+    if settings.face_inference_concurrency < 1:
+        raise RuntimeError("FACE_INFERENCE_CONCURRENCY must be at least 1")
+    if settings.ort_intra_op_threads < 1:
+        raise RuntimeError("ORT_INTRA_OP_THREADS must be at least 1")
+    if settings.ort_inter_op_threads < 1:
+        raise RuntimeError("ORT_INTER_OP_THREADS must be at least 1")
     if settings.max_image_mb <= 0 or settings.max_image_pixels <= 0:
         raise RuntimeError("Image size and pixel limits must be positive")
     if settings.environment == "staging":

@@ -1,11 +1,13 @@
 import base64
 import os
 
+import numpy as np
 from fastapi.testclient import TestClient
 
 os.environ.setdefault("DETECTOR_PROVIDER", "mock")
 
 from app.main import app
+from app.models.mock_recognizer import MockFaceRecognizer
 
 client = TestClient(app)
 
@@ -36,3 +38,34 @@ def test_verify_endpoint_with_two_valid_images() -> None:
     assert body["similarity_cosine"] >= -1
     assert body["threshold"]["score_type"] == "cosine"
     assert "faces" in body and "timings_ms" in body
+
+
+def test_verify_non_match_response_contract_is_unchanged(monkeypatch) -> None:
+    embeddings = iter(
+        [
+            np.array([1.0, 0.0], dtype=np.float32),
+            np.array([0.0, 1.0], dtype=np.float32),
+        ]
+    )
+    monkeypatch.setattr(MockFaceRecognizer, "embed", lambda *_args: next(embeddings))
+    response = client.post("/v1/faces/verify", json=_verify_payload("req-non-match"))
+    assert response.status_code == 200
+    body = response.json()
+    assert body["request_id"] == "req-non-match"
+    assert body["decision"] == "non_match"
+    assert body["similarity_cosine"] == 0.0
+    assert set(body) == {
+        "request_id",
+        "decision",
+        "match_score_percent",
+        "similarity_cosine",
+        "threshold",
+        "model_versions",
+        "faces",
+        "timings_ms",
+    }
+
+
+def _verify_payload(request_id: str) -> dict[str, object]:
+    image = {"kind": "base64_png", "data": base64.b64encode(_png_bytes()).decode("ascii")}
+    return {"request_id": request_id, "image_a": image, "image_b": image}

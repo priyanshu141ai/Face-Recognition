@@ -1,3 +1,5 @@
+from contextlib import asynccontextmanager
+
 from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.encoders import jsonable_encoder
@@ -15,6 +17,7 @@ from app.core.config import cors_origins, get_settings, validate_deployment_sett
 from app.core.errors import FaceQualityError, InvalidImagePayloadError
 from app.core.security_errors import SecurityDomainError
 from app.core.logging import configure_logging
+from app.services.pipeline import get_face_verification_pipeline
 
 load_dotenv()
 configure_logging()
@@ -22,12 +25,21 @@ settings = get_settings()
 validate_deployment_settings(settings)
 allowed_origins = cors_origins(settings)
 
+
+@asynccontextmanager
+async def lifespan(application: FastAPI):
+    pipeline = get_face_verification_pipeline()
+    pipeline.ensure_ready()
+    application.state.face_pipeline = pipeline
+    yield
+
 app = FastAPI(
     title="Face Recognition Backend",
     version="phase-5",
     docs_url="/docs" if settings.enable_api_docs else None,
     redoc_url="/redoc" if settings.enable_api_docs else None,
     openapi_url="/openapi.json" if settings.enable_api_docs else None,
+    lifespan=lifespan,
 )
 app.add_middleware(
     CORSMiddleware,

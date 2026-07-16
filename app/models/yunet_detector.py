@@ -1,18 +1,20 @@
 import os
+import threading
 from typing import Any
 
 import cv2
 import numpy as np
 
-from app.core.config import get_settings
+from app.core.config import Settings, get_settings
 from app.schemas.face import FaceDetectionSchema
 from app.services.detector_base import BaseFaceDetector
 
 
 class YuNetFaceDetector(BaseFaceDetector):
-    def __init__(self) -> None:
-        self.settings = get_settings()
+    def __init__(self, settings: Settings | None = None) -> None:
+        self.settings = settings or get_settings()
         self.detector = None
+        self._detector_lock = threading.Lock()
         self._load_detector()
 
     def _load_detector(self) -> None:
@@ -31,9 +33,6 @@ class YuNetFaceDetector(BaseFaceDetector):
         )
 
     def detect(self, image: bytes, quality_policy: Any | None = None) -> list[FaceDetectionSchema]:
-        if self.detector is None:
-            self._load_detector()
-
         image_array = np.frombuffer(image, dtype=np.uint8)
         image_bgr = cv2.imdecode(image_array, cv2.IMREAD_COLOR)
         if image_bgr is None:
@@ -49,8 +48,11 @@ class YuNetFaceDetector(BaseFaceDetector):
         else:
             scale = 1.0
 
-        self.detector.setInputSize((width, height))
-        detect_result = self.detector.detect(image_bgr)
+        with self._detector_lock:
+            if self.detector is None:
+                self._load_detector()
+            self.detector.setInputSize((width, height))
+            detect_result = self.detector.detect(image_bgr)
         if isinstance(detect_result, tuple) and len(detect_result) == 2:
             first, second = detect_result
             faces = second if isinstance(first, (int, float)) else first

@@ -75,7 +75,7 @@ def detect_faces(
         if len(image_bytes) / (1024 * 1024) > settings.max_image_mb:
             raise InvalidImagePayloadError(f"image exceeds {settings.max_image_mb}MB")
         pipeline = get_face_verification_pipeline()
-        with pipeline.inference_lock:
+        with pipeline.inference_slot():
             faces = pipeline._get_detector().detect(image_bytes, None)
             pipeline._validate_quality(faces, request.quality_policy, "image")
         return {"request_id": request.request_id, "faces": [face.model_dump() for face in faces]}
@@ -99,7 +99,7 @@ def embed_faces(
     _rate_limit(http_request, "face_engine_embed")
     try:
         pipeline = get_face_verification_pipeline()
-        with pipeline.inference_lock:
+        with pipeline.inference_slot():
             image_bytes = ImageDecoder(settings.max_image_pixels).decode(
                 request.image.data, request.image.kind, int(settings.max_image_mb * 1024 * 1024)
             )
